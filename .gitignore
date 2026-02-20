@@ -26,3 +26,57 @@ yarn-error.log*
 
 # Environment files (local configs)
 /.env.*
+
+# ========================
+# Secrets & Environment
+# ========================
+.env
+*.env
+
+# ========================
+# Python
+# ========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+env/
+venv/
+.venv/
+ENV/
+pip-wheel-metadata/
+
+# ========================
+# Database files
+# ========================
+*.db
+*.sqlite
+*.sqlite3
+
+# ========================
+# Uploads (user content)
+# ========================
+paper_generator/uploads/
+
+# ========================
+# IDE & OS
+# ========================
+.idea/
+.vscode/
+*.DS_Store
+Thumbs.db
+desktop.ini
+
+# ========================
+# Logs
+# ========================
+*.log
+logs/
+
+
