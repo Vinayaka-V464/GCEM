@@ -1,0 +1,543 @@
+{% extends "base.html" %}
+
+{% block title %}Generate Paper - Paper Generator{% endblock %}
+
+{% set show_navbar = true %}
+
+{% block content %}
+<div class="dashboard">
+    <div class="container">
+        <div class="dashboard-header fade-in">
+            <div class="section-label">Create</div>
+            <h1 class="h1">Generate Question Paper</h1>
+            <p class="text-muted" style="font-size: 1.125rem;">Upload your question bank and configure the settings</p>
+        </div>
+
+        <form action="/generate" method="post" enctype="multipart/form-data">
+            <!-- College & Exam Details -->
+            <div class="card fade-in mb-4" style="animation-delay: 0.1s;">
+                <div class="section-label">Step 01</div>
+                <h2 class="h3 mb-3" style="color: var(--green-primary);">College & Exam Details</h2>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
+                    <div class="form-group" style="grid-column: 1 / -1;">
+                        <label class="form-label">College Name</label>
+                        <input type="text" class="form-input" name="college_name"
+                            value="Gopalan College of Engineering and Management" required>
+                    </div>
+                    <div class="form-group" style="grid-column: 1 / -1;">
+                        <label class="form-label">Address</label>
+                        <input type="text" class="form-input" name="college_address"
+                            value="181/1, 182/1, Sonnenahalli, Hoodi, K.R.Puram, Whitefield, Bangalore - 560 048">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Phone</label>
+                        <input type="text" class="form-input" name="phone_no" value="(080) - 42229748">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Email</label>
+                        <input type="text" class="form-input" name="email" value="gcem@gopalancolleges.com">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Website</label>
+                        <input type="text" class="form-input" name="website" value="www.gopalancolleges.com/gcem">
+                    </div>
+                </div>
+
+                <hr style="border: none; border-top: 1px solid rgba(0,0,0,0.08); margin: 24px 0;">
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px;">
+                    {% if subjects %}
+                    <div class="form-group" style="grid-column: 1 / -1;">
+                        <label class="form-label">Subject (Code - Name - Sem)</label>
+                        <select class="form-input" id="subject-select" required>
+                            <option value="">Select your subject</option>
+                            {% for s in subjects %}
+                            <option value="{{ s.subject_code }}|{{ s.subject_name }}|{{ s.semester }}">
+                                {{ s.subject_code }} - {{ s.subject_name }} (Sem {{ s.semester }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <input type="hidden" name="semester" id="semester-input">
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info" style="grid-column: 1 / -1;">
+                        No subjects assigned. Please contact HOD for approval.
+                    </div>
+                    {% endif %}
+                    <div class="form-group" style="grid-column: 1 / -1;">
+                        <label class="form-label">Exam Title</label>
+                        <input type="text" class="form-input" name="exam_title" value="Internal Assessment Test - II"
+                            required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Academic Year</label>
+                        <input type="text" class="form-input" name="academic_year" value="2024-25 (EVEN)">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Program</label>
+                        <input type="text" class="form-input" name="program" value="B.E - CSE">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Department</label>
+                        <input type="text" class="form-input" name="dept" value="{{ current_user.department }}"
+                            readonly style="background: #f9fafb;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Date</label>
+                        <input type="date" class="form-input" name="date" value="2025-04-25">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Duration</label>
+                        <input type="text" class="form-input" name="duration" value="90 minutes">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Time</label>
+                        <input type="text" class="form-input" name="time" value="9.30AM-11.00AM">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Course Code</label>
+                        <input type="text" class="form-input" name="course_code" id="course-code-input" value=""
+                            placeholder="Select subject" readonly style="background: #f9fafb;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Course Name</label>
+                        <input type="text" class="form-input" name="course_name" id="course-name-input"
+                            value="" placeholder="Select subject" readonly style="background: #f9fafb;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Max. Marks</label>
+                        <input type="number" class="form-input" name="max_marks" value="50">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Credits</label>
+                        <input type="number" class="form-input" name="course_credits" value="3">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Course Type</label>
+                        <input type="text" class="form-input" name="course_type" value="Theory">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Question Settings -->
+            <div class="card fade-in mb-4" style="animation-delay: 0.2s;">
+                <div class="section-label">Step 02</div>
+                <h2 class="h3 mb-3" style="color: var(--green-primary);">Question Settings</h2>
+
+                <div class="alert alert-info mb-3">
+                    <strong>How it works:</strong> Enter sub-question marks separated by commas (e.g., <code
+                        style="background: rgba(0,0,0,0.08); padding: 2px 6px; border-radius: 4px;">7,7,6</code> for
+                    three sub-questions). Paper shows Q1 OR Q2, Q3 OR Q4, Q5 OR Q6.
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
+                    <div class="step-card">
+                        <div class="step-number">Question 1</div>
+                        <label class="form-label">Sub-question Marks</label>
+                        <input type="text" class="form-input" name="q1_marks" value="7,7,6" placeholder="e.g., 7,7,6">
+                    </div>
+
+                    <div class="card" style="padding: 20px; border: 2px dashed rgba(0,0,0,0.12);">
+                        <span class="badge badge-orange" style="margin-bottom: 12px;">OR - Question 2</span>
+                        <label class="form-label">Sub-question Marks</label>
+                        <input type="text" class="form-input" name="q2_marks" value="7,7,6" placeholder="e.g., 7,7,6">
+                    </div>
+
+                    <div class="step-card">
+                        <div class="step-number">Question 3</div>
+                        <label class="form-label">Sub-question Marks</label>
+                        <input type="text" class="form-input" name="q3_marks" value="6,6,8" placeholder="e.g., 6,6,8">
+                    </div>
+
+                    <div class="card" style="padding: 20px; border: 2px dashed rgba(0,0,0,0.12);">
+                        <span class="badge badge-orange" style="margin-bottom: 12px;">OR - Question 4</span>
+                        <label class="form-label">Sub-question Marks</label>
+                        <input type="text" class="form-input" name="q4_marks" value="10,10" placeholder="e.g., 10,10">
+                    </div>
+
+                    <div class="step-card">
+                        <div class="step-number">Question 5</div>
+                        <label class="form-label">Sub-question Marks</label>
+                        <input type="text" class="form-input" name="q5_marks" value="5,5" placeholder="e.g., 5,5">
+                    </div>
+
+                    <div class="card" style="padding: 20px; border: 2px dashed rgba(0,0,0,0.12);">
+                        <span class="badge badge-orange" style="margin-bottom: 12px;">OR - Question 6</span>
+                        <label class="form-label">Sub-question Marks</label>
+                        <input type="text" class="form-input" name="q6_marks" value="10" placeholder="e.g., 10">
+                    </div>
+                </div>
+            </div>
+
+            <!-- File Uploads -->
+            <div class="card fade-in mb-4" style="animation-delay: 0.3s;">
+                <div class="section-label">Step 03</div>
+                <h2 class="h3 mb-3" style="color: var(--green-primary);">Upload Files</h2>
+
+                <div class="alert alert-info mb-3">
+                    <strong>Note:</strong> HOD signature will be automatically added when the paper is approved.
+                </div>
+
+                <!-- Module-wise Question Bank Selection -->
+                <div class="form-group mb-4">
+                    <label class="form-label">📚 Select Question Banks (Modules) *</label>
+                    <p class="text-muted mb-2" style="font-size: 0.875rem;">Select the question banks you want to
+                        include in this paper.</p>
+
+                    <div id="module-selection_container" style="display: flex; flex-direction: column; gap: 12px;">
+                        {% if question_banks %}
+                        {% for qb in question_banks %}
+                        <div class="module-selection-row"
+                            data-subject-code="{{ qb.subject_code_parsed }}"
+                            data-semester="{{ qb.semester_core_parsed }}">
+                            <input type="checkbox" id="qb_{{ qb.id }}" name="qb_ids[]" value="{{ qb.id }}"
+                                style="width: 20px; height: 20px; accent-color: var(--green-primary);">
+                            <div style="flex: 1;">
+                                <label for="qb_{{ qb.id }}"
+                                    style="font-weight: 600; font-size: 1rem; cursor: pointer; display: block;">{{
+                                    qb.title }}</label>
+                                <div class="module-selection-meta">
+                                    Subject: {{ qb.subject }} | Date: {{ qb.created_at[:10] }}
+                                </div>
+                            </div>
+                            <a href="/uploads/{{ qb.file_path }}" target="_blank" class="btn btn-sm btn-outline"
+                                style="font-size: 0.75rem;">View PDF</a>
+                        </div>
+                        {% endfor %}
+                        <div id="no-qb-match" class="alert alert-warning" style="display: none;">
+                            No question banks found for selected subject/semester. Please upload matching modules.
+                        </div>
+                        {% else %}
+                        <div class="alert alert-warning">
+                            <p>No question banks found. Please <a href="/upload-qb"
+                                    style="text-decoration: underline; font-weight: bold;">upload a question bank</a>
+                                first.</p>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <div style="margin-top: 12px;">
+                        <a href="/upload-qb" class="btn btn-outline" style="padding: 8px 16px;">
+                            ➕ Upload New Question Bank
+                        </a>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
+                    <div class="form-group">
+                        <label class="form-label">College Logo</label>
+                        <div class="card" style="padding: 20px; text-align: center; cursor: pointer;">
+                            <input type="file" name="logo_image" accept="image/*" style="width: 100%;">
+                            <p class="text-muted" style="font-size: 0.8125rem; margin-top: 8px;">Optional</p>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Your Signature (Teacher) *</label>
+                        <div class="step-card"
+                            style="padding: 20px; text-align: center; cursor: pointer; border: 2px solid var(--green-primary);">
+                            <input type="file" name="teacher_signature" accept="image/*" style="width: 100%;">
+                            <p class="text-muted" style="font-size: 0.8125rem; margin-top: 8px;">Required for paper</p>
+                            {% if current_user.signature_path %}
+                            <p style="font-size: 0.75rem; color: var(--green-primary); margin-top: 4px;">✓ Or use your
+                                saved signature</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Show Draft Button -->
+            <div class="fade-in mb-4" style="animation-delay: 0.35s;">
+                <button type="button" class="btn btn-secondary btn-lg btn-block" onclick="showDraft()" id="draft-btn"
+                    style="font-size: 1rem; padding: 16px; background: var(--glass-card-bg); border: 1px solid var(--glass-card-border); box-shadow: var(--glass-card-shadow); color: var(--brown); margin-bottom: 16px; backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));">
+                    👁️ Show Draft Preview
+                </button>
+            </div>
+
+            <!-- Draft Preview Section (hidden by default) -->
+            <div id="draft-preview" class="card fade-in mb-4" style="display: none; animation-delay: 0.35s;">
+                <div class="section-label" style="color: var(--green-primary);">📋 Draft Preview</div>
+                <p class="text-muted mb-3">This is how questions will appear in your paper:</p>
+                <div id="draft-content"
+                    style="border: 2px dashed var(--green-bg); border-radius: 8px; padding: 20px; background: #FAFAFA;">
+                    <p class="text-muted text-center">Loading preview...</p>
+                </div>
+            </div>
+
+            <!-- Submit Button -->
+            <div class="fade-in" style="animation-delay: 0.4s;">
+                <button type="submit" class="btn btn-primary btn-lg btn-block"
+                    style="font-size: 1.125rem; padding: 20px;">
+                    ✨ Generate Final Question Paper
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    (function () {
+        const subjectSelect = document.getElementById('subject-select');
+        const codeInput = document.getElementById('course-code-input');
+        const nameInput = document.getElementById('course-name-input');
+        const semInput = document.getElementById('semester-input');
+        const moduleRows = Array.from(document.querySelectorAll('.module-selection-row'));
+        const noQbMatch = document.getElementById('no-qb-match');
+        if (!subjectSelect || !codeInput || !nameInput || !semInput) return;
+
+        const normalize = (value) => (value || '').toString().toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const semCore = (value) => {
+            const token = ((value || '').toString().toUpperCase().match(/[0-9]+/) || [])[0];
+            return token ? String(parseInt(token, 10)) : '';
+        };
+
+        const filterQuestionBanks = () => {
+            const selectedCode = normalize(codeInput.value);
+            const selectedSem = semCore(semInput.value);
+            let visible = 0;
+
+            if (!selectedCode) {
+                moduleRows.forEach((row) => {
+                    row.style.display = 'none';
+                    const checkbox = row.querySelector('input[type="checkbox"]');
+                    if (checkbox) checkbox.checked = false;
+                });
+                if (noQbMatch) {
+                    noQbMatch.textContent = 'Select a subject to view its question banks.';
+                    noQbMatch.style.display = moduleRows.length ? 'block' : 'none';
+                }
+                return;
+            }
+
+            moduleRows.forEach((row) => {
+                const rowCode = normalize(row.dataset.subjectCode || '');
+                const rowSem = semCore(row.dataset.semester || '');
+                const codeMatch = selectedCode && rowCode === selectedCode;
+                const semMatch = !selectedSem || !rowSem || rowSem === selectedSem;
+                const show = !!codeMatch && semMatch;
+                row.style.display = show ? 'flex' : 'none';
+                if (!show) {
+                    const checkbox = row.querySelector('input[type="checkbox"]');
+                    if (checkbox) checkbox.checked = false;
+                }
+                if (show) visible += 1;
+            });
+
+            if (noQbMatch) {
+                noQbMatch.textContent = 'No question banks found for selected subject/semester. Please upload matching modules.';
+                noQbMatch.style.display = visible ? 'none' : 'block';
+            }
+        };
+
+        const applySelection = () => {
+            const val = subjectSelect.value || '';
+            const parts = val.split('|');
+            if (parts.length >= 3) {
+                codeInput.value = parts[0];
+                nameInput.value = parts[1];
+                semInput.value = parts[2];
+            } else {
+                codeInput.value = '';
+                nameInput.value = '';
+                semInput.value = '';
+            }
+            filterQuestionBanks();
+        };
+
+        subjectSelect.addEventListener('change', applySelection);
+        if (subjectSelect.options.length === 2 && subjectSelect.value === '') {
+            subjectSelect.selectedIndex = 1;
+            applySelection();
+        } else {
+            applySelection();
+        }
+    })();
+
+    // Store current selections and data globally
+    let previewData = null;
+    let selectedQuestions = {}; // slot_id -> selected option index
+
+    async function showDraft() {
+        const btn = document.getElementById('draft-btn');
+        const previewSection = document.getElementById('draft-preview');
+        const previewContent = document.getElementById('draft-content');
+
+        btn.disabled = true;
+        btn.textContent = '⏳ Loading Preview...';
+        previewSection.style.display = 'block';
+        previewContent.innerHTML = '<p class="text-muted text-center">Parsing question bank and generating preview...</p>';
+
+        // Get form data
+        const form = document.querySelector('form');
+        const formData = new FormData(form);
+
+        try {
+            const response = await fetch('/api/paper/preview', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                previewData = result;
+                // Initialize selections
+                result.questions.forEach(q => {
+                    q.sub_questions.forEach(sub => {
+                        if (!(sub.slot_id in selectedQuestions)) {
+                            selectedQuestions[sub.slot_id] = 0;
+                        }
+                    });
+                });
+                renderPreview();
+                btn.textContent = '🔄 Refresh Draft Preview';
+                btn.disabled = false;
+            } else {
+                previewContent.innerHTML = `<p style="color: #DC2626; text-align: center;">❌ ${result.message || 'Failed to generate preview'}</p>`;
+                btn.textContent = '👁️ Show Draft Preview';
+                btn.disabled = false;
+            }
+        } catch (error) {
+            previewContent.innerHTML = `<p style="color: #DC2626; text-align: center;">❌ Error: ${error.message || 'Failed to load preview'}</p>`;
+            btn.textContent = '👁️ Show Draft Preview';
+            btn.disabled = false;
+        }
+    }
+
+    function switchQuestion(slotId, direction) {
+        const slot = findSlot(slotId);
+        if (!slot) return;
+
+        // Get all currently used question IDs except this slot
+        const usedIds = getUsedQuestionIds(slotId);
+
+        // Find next available question that's not used elsewhere
+        let currentIdx = selectedQuestions[slotId];
+        let attempts = 0;
+        let newIdx = currentIdx;
+
+        while (attempts < slot.options.length) {
+            newIdx = (newIdx + direction + slot.options.length) % slot.options.length;
+            if (!usedIds.has(slot.options[newIdx].id)) {
+                selectedQuestions[slotId] = newIdx;
+                renderPreview();
+                return;
+            }
+            attempts++;
+        }
+
+        // If all alternatives are used, still allow switch but show warning
+        newIdx = (currentIdx + direction + slot.options.length) % slot.options.length;
+        selectedQuestions[slotId] = newIdx;
+        renderPreview();
+    }
+
+    function findSlot(slotId) {
+        if (!previewData) return null;
+        for (const q of previewData.questions) {
+            for (const sub of q.sub_questions) {
+                if (sub.slot_id === slotId) return sub;
+            }
+        }
+        return null;
+    }
+
+    function getUsedQuestionIds(excludeSlotId) {
+        const usedIds = new Set();
+        if (!previewData) return usedIds;
+
+        for (const q of previewData.questions) {
+            for (const sub of q.sub_questions) {
+                if (sub.slot_id !== excludeSlotId) {
+                    const selectedIdx = selectedQuestions[sub.slot_id] || 0;
+                    if (sub.options[selectedIdx]) {
+                        usedIds.add(sub.options[selectedIdx].id);
+                    }
+                }
+            }
+        }
+        return usedIds;
+    }
+
+    function renderPreview() {
+        const previewContent = document.getElementById('draft-content');
+        if (!previewData) return;
+
+        const usedIds = new Set();
+        let html = '<div style="font-family: Times New Roman, serif;">';
+
+        // Stats bar
+        html += `<div style="background: var(--green-bg); padding: 12px; border-radius: 8px; margin-bottom: 16px;">
+            <strong>📊 Question Bank:</strong> ${previewData.total_questions_in_pool} questions | 
+            <strong>Questions by marks:</strong> ${Object.entries(previewData.questions_by_marks || {}).map(([m, c]) => `${m}M: ${c}`).join(', ')}
+        </div>`;
+
+        if (previewData.questions && previewData.questions.length > 0) {
+            previewData.questions.forEach((q, qIdx) => {
+                html += `<div style="margin-bottom: 24px; padding: 20px; background: white; border-radius: 12px; border: 2px solid var(--green-primary); box-shadow: 0 2px 8px rgba(0,0,0,0.05);">`;
+                html += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <span style="font-size: 1.25rem; font-weight: 700; color: var(--green-primary);">Question ${q.number}</span>
+                    <span class="badge" style="background: var(--green-bg); color: var(--green-primary); font-size: 0.875rem;">${q.total_marks} Marks</span>
+                </div>`;
+
+                q.sub_questions.forEach((sub, subIdx) => {
+                    const selectedIdx = selectedQuestions[sub.slot_id] || 0;
+                    const selectedOption = sub.options[selectedIdx];
+                    const alternativesCount = sub.options.length - 1;
+
+                    html += `<div style="margin: 12px 0; padding: 16px; background: #F8FAFC; border-radius: 8px; border-left: 4px solid var(--green-primary);">`;
+
+                    // Header with sub-question letter and switch buttons
+                    html += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <span style="font-weight: 600; font-size: 1rem;">${sub.letter}) <span class="badge" style="background: #E2E8F0; color: #475569;">${sub.marks} marks</span></span>
+                        <div style="display: flex; gap: 8px; align-items: center;">`;
+
+                    if (alternativesCount > 0) {
+                        html += `<button onclick="switchQuestion('${sub.slot_id}', -1)" style="padding: 4px 10px; border: 1px solid #ddd; border-radius: 4px; background: white; cursor: pointer;">◀</button>
+                            <span style="font-size: 0.75rem; color: #666;">${selectedIdx + 1} / ${sub.options.length}</span>
+                            <button onclick="switchQuestion('${sub.slot_id}', 1)" style="padding: 4px 10px; border: 1px solid #ddd; border-radius: 4px; background: white; cursor: pointer;">▶</button>
+                            <span style="font-size: 0.75rem; color: var(--brown-light);">(${alternativesCount} alternatives)</span>`;
+                    } else {
+                        html += `<span style="font-size: 0.75rem; color: #999;">No alternatives</span>`;
+                    }
+
+                    html += `</div></div>`;
+
+                    // Question text
+                    if (selectedOption) {
+                        html += `<div style="font-size: 1rem; line-height: 1.6; margin-bottom: 10px;">${selectedOption.text}</div>`;
+                        html += `<div style="display: flex; gap: 16px; font-size: 0.8125rem; flex-wrap: wrap;">
+                            <span style="color: var(--brown);">📊 ${selectedOption.co}</span>
+                            <span style="color: #7C3AED;">🧠 ${selectedOption.rbt}</span>
+                            <span style="color: var(--green-primary);">📚 ${selectedOption.module || 'Module'}</span>
+                        </div>`;
+                    } else {
+                        html += `<div style="color: #DC2626;">No question available for ${sub.marks} marks</div>`;
+                    }
+
+                    html += `</div>`;
+                });
+
+                html += `</div>`;
+
+                // OR separator between question pairs (after Q1, Q3, Q5)
+                const qNum = parseInt(q.number);
+                if (qNum % 2 === 1 && qIdx < previewData.questions.length - 1) {
+                    html += `<div style="text-align: center; margin: 20px 0; position: relative;">
+                        <hr style="border: none; border-top: 3px dashed var(--orange); margin: 0;">
+                        <span style="position: absolute; top: -14px; left: 50%; transform: translateX(-50%); background: var(--cream-dark); padding: 4px 20px; color: var(--brown); font-weight: 700; font-size: 1.1rem; border-radius: 20px;">OR</span>
+                    </div>`;
+                }
+            });
+        } else {
+            html += '<p class="text-muted text-center">No questions could be parsed from the PDF.</p>';
+        }
+
+        html += '</div>';
+        previewContent.innerHTML = html;
+    }
+</script>
+{% endblock %}
+
+

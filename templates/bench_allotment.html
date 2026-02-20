@@ -1,0 +1,338 @@
+{% extends "base.html" %}
+
+{% block title %}Bench Allotment - Paper Generator{% endblock %}
+
+{% set show_navbar = true %}
+
+{% block content %}
+<div class="dashboard">
+    <div class="container">
+        <div class="dashboard-header fade-in non-print">
+            <div class="section-label">HOD Tools</div>
+            <h1 class="h1">Automatic Bench Allotment</h1>
+            <p class="text-muted" style="font-size: 1.02rem;">Enter rooms and semester-wise roll ranges, then generate a printable seating blueprint.</p>
+        </div>
+
+        <form method="POST" class="card fade-in non-print" style="animation-delay: 0.05s;" id="allotment-form">
+            <input type="hidden" name="_scroll_y" id="bench-scroll-y" value="{{ request.form.get('_scroll_y','') }}">
+            <div style="display:grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap:12px;">
+                <div class="form-group" style="margin-bottom:0;">
+                    <label class="form-label">Exam Date</label>
+                    <input class="form-input" type="date" name="exam_date" value="{{ request.form.get('exam_date','') }}">
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label class="form-label">Exam Time</label>
+                    <input class="form-input" type="text" name="exam_time" placeholder="2:00 PM to 5:00 PM" value="{{ request.form.get('exam_time','') }}">
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label class="form-label">Seats Per Bench</label>
+                    <input class="form-input" type="number" name="seats_per_bench" min="2" max="4" value="{{ seats_per_bench or 3 }}">
+                </div>
+            </div>
+
+            <div class="section-label mt-3">Classrooms</div>
+            <div id="rooms-wrap" class="stack-zone">
+                {% for r in rooms %}
+                <div class="stack-row room-row">
+                    <input class="form-input" name="room_name[]" placeholder="Room (e.g., 203)" value="{{ r.room }}">
+                    <input class="form-input" name="room_rows[]" type="number" min="1" placeholder="Rows" value="{{ r.rows }}">
+                    <input class="form-input" name="room_cols[]" type="number" min="1" placeholder="Columns" value="{{ r.cols }}">
+                    <button type="button" class="btn btn-outline" onclick="removeRow(this)">Remove</button>
+                </div>
+                {% endfor %}
+            </div>
+            <button type="button" class="btn btn-secondary mt-2" onclick="addRoomRow()">Add Classroom</button>
+
+            <div class="section-label mt-4">Student Groups</div>
+            <div id="groups-wrap" class="stack-zone">
+                {% for g in groups %}
+                <div class="stack-row group-row">
+                    <input class="form-input" name="group_name[]" placeholder="Group name (Sem 6 - CS)" value="{{ g.name }}">
+                    <input class="form-input" name="group_semester[]" placeholder="Semester (6)" value="{{ g.semester }}">
+                    <input class="form-input" name="group_prefix[]" placeholder="Prefix (1GD23CS)" value="{{ g.prefix }}">
+                    <input class="form-input" name="group_rolls[]" placeholder="Rolls (001-060, 071, 072)" value="{{ g.rolls_raw }}">
+                    <input class="form-input" name="group_pad[]" type="number" min="0" max="6" placeholder="Pad" value="{{ g.pad_len }}">
+                    <button type="button" class="btn btn-outline" onclick="removeRow(this)">Remove</button>
+                </div>
+                {% endfor %}
+            </div>
+            <button type="button" class="btn btn-secondary mt-2" onclick="addGroupRow()">Add Group</button>
+
+            <div class="mt-4" style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button type="submit" class="btn btn-primary">Generate Blueprint</button>
+                {% if result %}
+                <button type="button" class="btn btn-outline" onclick="window.print()">Print Blueprint</button>
+                {% endif %}
+            </div>
+        </form>
+
+        {% if result %}
+        <div class="card fade-in mt-4 print-only-block" style="animation-delay:0.1s;">
+            <div class="print-header">
+                <h2 class="h3">Seating Arrangement Blueprint</h2>
+                <div class="text-muted">
+                    Date: {{ request.form.get('exam_date','-') }} | Time: {{ request.form.get('exam_time','-') }}
+                </div>
+            </div>
+            <p class="text-muted" style="font-size:.9rem; margin-top:8px;">Allotment order: column-wise (top to bottom in each column, then next column).</p>
+            <div class="meta-strip mt-2">
+                <span class="meta-chip meta-chip-blue">Capacity: {{ result.capacity }}</span>
+                <span class="meta-chip meta-chip-green">Students: {{ result.students }}</span>
+                <span class="meta-chip meta-chip-amber">Assigned: {{ result.assigned }}</span>
+            </div>
+            {% if result.unallocated %}
+            <div class="alert alert-warning mt-3">
+                Unallocated students remain. Increase rooms/benches or reduce student count.
+            </div>
+            {% endif %}
+        </div>
+
+        {% for room in result.layouts %}
+        <div class="card fade-in mt-4 blueprint-card" style="animation-delay:0.12s;">
+            <div class="blueprint-top">
+                <div>
+                    <div class="section-label">Room {{ room.room }}</div>
+                    <h3 class="h4">Rows {{ room.rows }} x Columns {{ room.cols }} ({{ result.seats_per_bench }} seats per bench)</h3>
+                </div>
+            </div>
+
+            <div class="blueprint-grid" style="--rows: {{ room.rows }}; --cols: {{ room.cols }};">
+                {% for row in room.layout %}
+                    {% for bench in row %}
+                    <div class="bench">
+                        <div class="bench-top">Bench</div>
+                        <div class="bench-seats" style="--bench-seats: {{ result.seats_per_bench }};">
+                            {% for seat in bench %}
+                            <div class="seat {% if not seat %}seat-empty{% endif %}">
+                                {% if seat %}
+                                <div class="seat-roll">{{ seat.roll }}</div>
+                                <div class="seat-sem">Sem {{ seat.semester or '-' }}</div>
+                                {% else %}
+                                <div class="seat-roll">-</div>
+                                <div class="seat-sem">Empty</div>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+
+        <div class="card fade-in mt-4">
+            <div class="section-label">Room Summary</div>
+            {% for room_name, group_map in result.summary.items() %}
+            <h3 class="h4 mt-2">Room {{ room_name }}</h3>
+            <div style="overflow-x:auto;">
+                <table class="summary-table">
+                    <thead>
+                        <tr>
+                            <th>Group</th>
+                            <th>Allocated Roll Numbers</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for group_name, rolls in group_map.items() %}
+                        <tr>
+                            <td>{{ group_name }}</td>
+                            <td style="font-size:0.86rem;">{{ rolls | join(', ') }}</td>
+                            <td>{{ rolls|length }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endfor %}
+            {% if result.unallocated %}
+            <div class="section-label mt-4">Unallocated</div>
+            {% for item in result.unallocated %}
+            <div class="alert alert-error mt-2">
+                <strong>{{ item.group }}</strong> (Sem {{ item.semester or '-' }}) : {{ item.remaining | join(', ') }}
+            </div>
+            {% endfor %}
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block head %}
+{{ super() }}
+<style>
+    .stack-zone { display:flex; flex-direction:column; gap:10px; }
+    .stack-row {
+        display:grid;
+        gap:8px;
+        align-items:center;
+        background: var(--glass-card-bg);
+        border: 1px solid var(--glass-card-border);
+        border-radius: 12px;
+        padding: 10px;
+    }
+    .room-row { grid-template-columns: 1.3fr 1fr 1fr auto; }
+    .group-row { grid-template-columns: 1.3fr .8fr 1fr 1.7fr .6fr auto; }
+
+    .meta-strip { display:flex; gap:8px; flex-wrap:wrap; }
+    .meta-chip { padding: 6px 10px; border-radius: 999px; font-size:.8rem; font-weight:700; }
+    .meta-chip-green { background: var(--green-bg); color: var(--green-primary); }
+    .meta-chip-blue { background: var(--status-info-bg); color: var(--chip-text-strong); }
+    .meta-chip-amber { background: var(--orange-light); color: var(--brown); }
+
+    .blueprint-card {
+        background:
+            radial-gradient(circle at 25% 20%, rgba(74,162,223,.10), transparent 45%),
+            radial-gradient(circle at 78% 8%, rgba(177,80,35,.12), transparent 40%),
+            var(--glass-card-bg);
+    }
+    .blueprint-top {
+        display:flex;
+        justify-content:space-between;
+        align-items:flex-start;
+        gap:10px;
+        margin-bottom:10px;
+    }
+    .blueprint-grid {
+        display:grid;
+        grid-template-columns: repeat(var(--cols), minmax(210px, 1fr));
+        gap:12px;
+    }
+    .bench {
+        border: 1px solid var(--glass-card-border);
+        border-radius: 14px;
+        padding: 8px;
+        background: var(--glass-bg);
+        box-shadow: var(--glass-card-shadow);
+    }
+    .bench-top {
+        text-align:center;
+        font-size:.8rem;
+        font-weight:700;
+        color: var(--chip-text-strong);
+        background: rgba(177,80,35,.16);
+        border-radius: 10px;
+        padding: 5px;
+        margin-bottom: 8px;
+    }
+    .bench-seats {
+        display:grid;
+        grid-template-columns: repeat(var(--bench-seats), 1fr);
+        gap:8px;
+    }
+    .seat {
+        border: 1px solid var(--glass-card-border);
+        border-radius: 10px;
+        padding: 8px 6px;
+        text-align:center;
+        background: rgba(243, 240, 228, .65);
+    }
+    :root[data-theme='dark'] .seat {
+        background: rgba(15,17,13,.55);
+    }
+    .seat-roll { font-weight: 700; font-size: .8rem; color: var(--chip-text-strong); word-break: break-all; }
+    .seat-sem { font-size: .72rem; color: var(--text-secondary); margin-top: 3px; }
+    .seat-empty { opacity: .5; }
+
+    .summary-table { width:100%; border-collapse: collapse; margin-top:8px; }
+    .summary-table th, .summary-table td {
+        border: 1px solid var(--glass-card-border);
+        padding: 9px 10px;
+        text-align: left;
+    }
+    .summary-table th { background: var(--glass-bg); }
+
+    .print-header { display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap; }
+
+    @media (max-width: 980px) {
+        .group-row { grid-template-columns: 1fr 1fr; }
+        .room-row { grid-template-columns: 1fr 1fr; }
+        .blueprint-grid { grid-template-columns: 1fr; }
+        .bench-seats { grid-template-columns: repeat(3, minmax(0,1fr)); }
+    }
+
+    @media print {
+        .navbar, .theme-toggle-float, .non-print { display:none !important; }
+        body { background: #fff !important; color: #111 !important; }
+        .dashboard { padding-top: 0 !important; }
+        .container { max-width: 100% !important; padding: 0 !important; }
+        .card {
+            box-shadow: none !important;
+            border: 1px solid #ddd !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            background: #fff !important;
+            break-inside: avoid;
+            page-break-inside: avoid;
+        }
+        .blueprint-card, .bench, .seat { background: #fff !important; }
+        .seat-roll, .seat-sem, .bench-top { color: #111 !important; }
+        .summary-table th, .summary-table td { border-color: #aaa !important; }
+        .print-only-block { display:block !important; }
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function removeRow(btn) {
+        const row = btn.closest('.stack-row');
+        if (!row) return;
+        const parent = row.parentElement;
+        if (parent.children.length <= 1) return;
+        row.remove();
+    }
+
+    function addRoomRow() {
+        const wrap = document.getElementById('rooms-wrap');
+        if (!wrap) return;
+        const row = document.createElement('div');
+        row.className = 'stack-row room-row';
+        row.innerHTML = `
+            <input class="form-input" name="room_name[]" placeholder="Room (e.g., 203)">
+            <input class="form-input" name="room_rows[]" type="number" min="1" placeholder="Rows" value="5">
+            <input class="form-input" name="room_cols[]" type="number" min="1" placeholder="Columns" value="4">
+            <button type="button" class="btn btn-outline" onclick="removeRow(this)">Remove</button>
+        `;
+        wrap.appendChild(row);
+    }
+
+    function addGroupRow() {
+        const wrap = document.getElementById('groups-wrap');
+        if (!wrap) return;
+        const row = document.createElement('div');
+        row.className = 'stack-row group-row';
+        row.innerHTML = `
+            <input class="form-input" name="group_name[]" placeholder="Group name (Sem 6 - CS)">
+            <input class="form-input" name="group_semester[]" placeholder="Semester (6)">
+            <input class="form-input" name="group_prefix[]" placeholder="Prefix (1GD23CS)">
+            <input class="form-input" name="group_rolls[]" placeholder="Rolls (001-060, 071, 072)">
+            <input class="form-input" name="group_pad[]" type="number" min="0" max="6" placeholder="Pad" value="3">
+            <button type="button" class="btn btn-outline" onclick="removeRow(this)">Remove</button>
+        `;
+        wrap.appendChild(row);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const form = document.getElementById('allotment-form');
+        const scrollInput = document.getElementById('bench-scroll-y');
+        if (form && scrollInput) {
+            form.addEventListener('submit', () => {
+                scrollInput.value = String(window.scrollY || window.pageYOffset || 0);
+            });
+        }
+
+        const postedScroll = parseInt('{{ request.form.get("_scroll_y","0") }}', 10);
+        if (!Number.isNaN(postedScroll) && postedScroll > 0) {
+            const restore = () => window.scrollTo(0, postedScroll);
+            requestAnimationFrame(() => {
+                restore();
+                setTimeout(restore, 60);
+                setTimeout(restore, 220);
+            });
+        }
+    });
+</script>
+{% endblock %}

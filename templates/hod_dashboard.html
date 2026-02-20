@@ -1,0 +1,629 @@
+{% extends "base.html" %}
+
+{% block title %}HOD Dashboard - Paper Generator{% endblock %}
+
+{% set show_navbar = true %}
+
+{% block content %}
+<div class="dashboard">
+    <div class="container">
+        <div class="dashboard-header fade-in">
+            <div class="section-label">HOD Dashboard</div>
+            <h1 class="h1">Welcome, {{ user.name or 'HOD' }}!</h1>
+            <p class="text-muted" style="font-size: 1.125rem;">Review and approve question papers</p>
+        </div>
+
+        <div class="dashboard-grid fade-in" style="animation-delay: 0.1s;">
+            <div class="stat-card stat-card-click" data-target="pending-papers-section">
+                <div class="stat-icon">⏳</div>
+                <div class="stat-value">{{ stats.pending_approvals or 0 }}</div>
+                <div class="stat-label">Pending Approvals</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">✅</div>
+                <div class="stat-value">{{ stats.approved_papers or 0 }}</div>
+                <div class="stat-label">Approved Papers</div>
+            </div>
+            <div class="stat-card stat-card-click" data-target="pending-teachers-section">
+                <div class="stat-icon">🧑‍🏫</div>
+                <div class="stat-value">{{ stats.pending_teachers or 0 }}</div>
+                <div class="stat-label">Pending Teachers</div>
+            </div>
+            <div class="stat-card stat-card-click" id="teachers-stat-card" data-target="teacher-directory-card">
+                <div class="stat-icon">👩‍🏫</div>
+                <div class="stat-value">{{ stats.teachers or 0 }}</div>
+                <div class="stat-label">Total Teachers</div>
+            </div>
+        </div>
+
+        <!-- Upload Signature Section -->
+        <div class="card fade-in mt-4" style="animation-delay: 0.2s;">
+            <div class="section-label">Your Signature</div>
+            <h3 class="h4 mb-3" style="color: var(--green-primary);">Upload HOD Signature for Approvals</h3>
+
+            {% if user.signature_path %}
+            <div style="margin-bottom: 16px;">
+                <p class="text-muted mb-2">Current signature:</p>
+                <img src="/uploads/{{ user.signature_path }}" alt="HOD Signature"
+                    style="max-height: 80px; border: 1px solid var(--glass-border); border-radius: 8px; padding: 8px; background: var(--glass-bg);">
+            </div>
+            {% endif %}
+
+            <form id="signature-form" enctype="multipart/form-data">
+                <div class="form-group" style="max-width: 400px;">
+                    <input type="file" class="form-input" id="signature-file" name="signature" accept="image/*">
+                </div>
+                <button type="submit" class="btn btn-secondary">Upload Signature</button>
+            </form>
+        </div>
+
+        <div class="card fade-in mt-4" style="animation-delay: 0.22s;">
+            <div class="section-label">Principal Signature</div>
+            <h3 class="h4 mb-3" style="color: var(--green-primary);">Upload Principal Signature (HOD only)</h3>
+
+            {% if user.principal_signature_path %}
+            <div style="margin-bottom: 16px;">
+                <p class="text-muted mb-2">Current principal signature:</p>
+                <img src="/uploads/{{ user.principal_signature_path }}" alt="Principal Signature"
+                    style="max-height: 80px; border: 1px solid var(--glass-border); border-radius: 8px; padding: 8px; background: var(--glass-bg);">
+            </div>
+            {% endif %}
+
+            <form id="principal-signature-form" enctype="multipart/form-data">
+                <div class="form-group" style="max-width: 400px;">
+                    <input type="file" class="form-input" id="principal-signature-file" name="signature" accept="image/*">
+                </div>
+                <button type="submit" class="btn btn-secondary">Upload Principal Signature</button>
+            </form>
+        </div>
+
+        <!-- Digital Campus Management -->
+        <div class="card fade-in mt-4" style="animation-delay: 0.25s;">
+            <div class="section-label">Digital Campus Management</div>
+            <h3 class="h4 mb-3" style="color: var(--green-primary);">Upload & Manage Schedules</h3>
+
+            <div style="display: flex; gap: 24px; flex-wrap: wrap;">
+                <!-- Timetable Upload -->
+                <div style="flex: 1; min-width: 300px;">
+                    <h4 class="h5 mb-2">Class Timetable</h4>
+                    <form action="/hod/upload-timetable" method="POST" enctype="multipart/form-data">
+                        <div class="form-group">
+                            <label for="tt-sem" style="font-size: 0.875rem;">Semester</label>
+                            <select name="semester" id="tt-sem" class="form-input" onchange="syncTimetableSections()">
+                                {% for sem in semester_options %}
+                                <option value="{{ sem }}">{{ sem }}{% if sem == '1' %}st{% elif sem == '2' %}nd{% elif sem == '3' %}rd{% else %}th{% endif %} Semester</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="tt-section" style="font-size: 0.875rem;">Section</label>
+                            <select name="section" id="tt-section" class="form-input">
+                                <option value="">Select Section</option>
+                                {% for sec in section_catalog %}
+                                <option value="{{ sec.section }}" data-sem="{{ sec.semester }}">Sem {{ sec.semester }} - {{ sec.section }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <input type="hidden" name="department" value="{{ user.department }}">
+                        <div class="form-group">
+                            <input type="file" class="form-input" name="timetable_pdf" accept=".pdf" required>
+                        </div>
+                        <button type="submit" class="btn btn-sm btn-secondary">Upload & Parse Timetable</button>
+                    </form>
+                </div>
+
+                <!-- Calendar Upload -->
+                <div style="flex: 1; min-width: 300px;">
+                    <h4 class="h5 mb-2">Calendar of Events</h4>
+                    <form action="/hod/upload-calendar" method="POST" enctype="multipart/form-data">
+                        <p class="text-muted" style="font-size: 0.8rem; margin-bottom: 8px;">Upload semester event
+                            calendar (PDF)</p>
+                        <div class="form-group">
+                            <label for="cal-sem" style="font-size: 0.875rem;">Semester</label>
+                            <select name="semester" id="cal-sem" class="form-input">
+                                {% for sem in semester_options %}
+                                <option value="{{ sem }}">{{ sem }}{% if sem == '1' %}st{% elif sem == '2' %}nd{% elif sem == '3' %}rd{% else %}th{% endif %} Semester</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <input type="hidden" name="department" value="{{ user.department }}">
+                        <div class="form-group">
+                            <input type="file" class="form-input" name="calendar_pdf" accept=".pdf" required>
+                        </div>
+                        <button type="submit" class="btn btn-sm btn-secondary">Upload & Parse Calendar</button>
+                    </form>
+                    <form action="/hod/clear-calendar" method="POST" style="margin-top: 10px;">
+                        <input type="hidden" name="department" value="{{ user.department }}">
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label for="cal-clear-sem" style="font-size: 0.875rem;">Clear Semester</label>
+                            <select name="semester" id="cal-clear-sem" class="form-input">
+                                {% for sem in semester_options %}
+                                <option value="{{ sem }}">{{ sem }}{% if sem == '1' %}st{% elif sem == '2' %}nd{% elif sem == '3' %}rd{% else %}th{% endif %} Semester</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-sm btn-outline">Clear Calendar Events</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="mt-3">
+                <div style="display:flex; gap:12px; flex-wrap: wrap; align-items: end;">
+                    <a href="/digital-campus" class="btn btn-outline" target="_blank">View Digital Campus</a>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <label for="preview-sem" style="font-size:0.875rem; font-weight:600;">Preview:</label>
+                        <select id="preview-sem" class="form-input" style="width:auto; min-width:120px;" onchange="syncPreviewSections()">
+                            {% for sem in semester_options %}
+                            <option value="{{ sem }}">{{ sem }}</option>
+                            {% endfor %}
+                        </select>
+                        <select id="preview-section" class="form-input" style="width:auto; min-width:140px;">
+                            <option value="">Select Section</option>
+                            {% for sec in section_catalog %}
+                            <option value="{{ sec.section }}" data-sem="{{ sec.semester }}">Sem {{ sec.semester }} - {{ sec.section }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="openSectionPreview()">Open Section</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="quick-actions fade-in mt-4"
+            style="animation-delay: 0.3s; display: flex; gap: 16px; flex-wrap: wrap;">
+            <a href="/hod/academics" class="action-card" style="flex: 1; min-width: 200px;">
+                <div class="action-card-icon">🧠</div>
+                <h3 class="h4">HOD Academics</h3>
+                <p class="text-muted">Generate papers, upload notes and question banks</p>
+            </a>
+            <a href="/hod/my-papers" class="action-card" style="flex: 1; min-width: 200px;">
+                <div class="action-card-icon">🗂️</div>
+                <h3 class="h4">My Papers</h3>
+                <p class="text-muted">View your generated papers</p>
+            </a>
+            <a href="/hod/staff" class="action-card" style="flex: 1; min-width: 200px;">
+                <div class="action-card-icon">👥</div>
+                <h3 class="h4">Staff Management</h3>
+                <p class="text-muted">Approve teachers & manage subjects</p>
+            </a>
+            <a href="/hod/history" class="action-card" style="flex: 1; min-width: 200px;">
+                <div class="action-card-icon">📜</div>
+                <h3 class="h4">Paper History</h3>
+                <p class="text-muted">View all papers by teacher & subject</p>
+            </a>
+            <a href="/hod/bench-allotment" class="action-card" style="flex: 1; min-width: 200px;">
+                <div class="action-card-icon">🪑</div>
+                <h3 class="h4">Bench Allotment</h3>
+                <p class="text-muted">Generate printable seating blueprint</p>
+            </a>
+        </div>
+
+        <div class="card fade-in mt-4" id="teacher-directory-card" style="animation-delay: 0.31s; display:none;">
+            <div class="section-label">Teacher Directory</div>
+            <h3 class="h4 mb-2" style="color: var(--green-primary);">All Teachers</h3>
+            <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-bottom:12px;">
+                <input id="teacher-search" type="text" class="form-input" placeholder="Search by name, email or phone..."
+                       style="max-width:420px;" oninput="filterTeacherRows()">
+                <select id="teacher-status-filter" class="form-input" style="width:auto;" onchange="filterTeacherRows()">
+                    <option value="all">All Statuses</option>
+                    <option value="approved">Approved</option>
+                    <option value="pending">Pending</option>
+                </select>
+                <span class="badge" id="teacher-visible-count" style="background: var(--green-bg); color: var(--green-primary);">Showing {{ teachers|length }} / {{ teachers|length }}</span>
+            </div>
+            <table style="width:100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="border-bottom: 1px solid var(--glass-card-border);">
+                        <th style="text-align:left; padding:12px;">Name</th>
+                        <th style="text-align:left; padding:12px;">Email</th>
+                        <th style="text-align:left; padding:12px;">Phone</th>
+                        <th style="text-align:left; padding:12px;">Subjects</th>
+                        <th style="text-align:left; padding:12px;">Sections</th>
+                        <th style="text-align:left; padding:12px;">Status</th>
+                        <th style="text-align:right; padding:12px;">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="teacher-directory-body">
+                    {% for t in teachers %}
+                    <tr class="teacher-row"
+                        data-teacher-id="{{ t.id }}"
+                        data-status="{{ 'approved' if t.approved_by_hod else 'pending' }}"
+                        data-search="{{ (t.name ~ ' ' ~ t.email ~ ' ' ~ (t.phone or '') ~ ' ' ~ (t.subjects_count|string) ~ ' ' ~ (t.sections_count|string))|lower }}"
+                        style="border-bottom: 1px solid var(--glass-card-border);">
+                        <td style="padding:12px;">{{ t.name }}</td>
+                        <td style="padding:12px;">{{ t.email }}</td>
+                        <td style="padding:12px;">{{ t.phone or '-' }}</td>
+                        <td style="padding:12px;">{{ t.subjects_count or 0 }}</td>
+                        <td style="padding:12px;">{{ t.sections_count or 0 }}</td>
+                        <td style="padding:12px;">
+                            {% if t.approved_by_hod %}
+                            <span class="badge badge-green">Approved</span>
+                            {% else %}
+                            <span class="badge badge-orange">Pending</span>
+                            {% endif %}
+                        </td>
+                        <td style="padding:12px; text-align:right;">
+                            <button class="btn btn-outline btn-sm" onclick="openTeacherDetails('{{ t.id }}')">View Full Details</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not teachers %}
+                    <tr><td colspan="7" style="padding:24px; text-align:center; color:var(--brown-light);">No teachers found.</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if pending_teachers %}
+        <div class="section-label mt-4 fade-in" id="pending-teachers-section" style="animation-delay: 0.32s;">Pending Teacher Approvals</div>
+        <div class="card fade-in" style="animation-delay: 0.32s;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="border-bottom: 1px solid var(--glass-card-border);">
+                        <th style="text-align: left; padding: 14px;">Name</th>
+                        <th style="text-align: left; padding: 14px;">Email</th>
+                        <th style="text-align: left; padding: 14px;">Phone</th>
+                        <th style="text-align: right; padding: 14px;">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in pending_teachers %}
+                    <tr style="border-bottom: 1px solid var(--glass-card-border);">
+                        <td style="padding: 14px;">{{ t.name }}</td>
+                        <td style="padding: 14px;">{{ t.email }}</td>
+                        <td style="padding: 14px;">{{ t.phone or '-' }}</td>
+                        <td style="padding: 14px; text-align: right;">
+                            <button class="btn btn-primary btn-sm" onclick="approveTeacher('{{ t.id }}')">Approve</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        <!-- Pending Approvals -->
+        <div class="section-label mt-4 fade-in" id="pending-papers-section" style="animation-delay: 0.3s;">Pending Approvals</div>
+        <h2 class="h3 mb-3 fade-in" style="animation-delay: 0.3s; color: var(--green-primary);">Papers Awaiting Your
+            Review</h2>
+
+        <div class="card fade-in" style="animation-delay: 0.4s;">
+            {% if pending_papers %}
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="border-bottom: 1px solid rgba(0,0,0,0.08);">
+                        <th
+                            style="text-align: left; padding: 14px; font-weight: 600; color: var(--brown-light); font-size: 0.875rem;">
+                            Paper Title</th>
+                        <th
+                            style="text-align: left; padding: 14px; font-weight: 600; color: var(--brown-light); font-size: 0.875rem;">
+                            Teacher</th>
+                        <th
+                            style="text-align: left; padding: 14px; font-weight: 600; color: var(--brown-light); font-size: 0.875rem;">
+                            Submitted</th>
+                        <th
+                            style="text-align: right; padding: 14px; font-weight: 600; color: var(--brown-light); font-size: 0.875rem;">
+                            Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for paper in pending_papers %}
+                    <tr style="border-bottom: 1px solid rgba(0,0,0,0.05);">
+                        <td style="padding: 14px; font-weight: 500;">{{ paper.title or paper.course_code }}</td>
+                        <td style="padding: 14px;">{{ paper.teacher_name }}</td>
+                        <td style="padding: 14px; color: var(--brown-light);">{{ paper.submitted_at }}</td>
+                        <td style="padding: 14px; text-align: right;">
+                            <a href="/paper/{{ paper.id }}/review" class="btn btn-primary"
+                                style="padding: 8px 16px; font-size: 0.8125rem;">Review</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state">
+                <div class="empty-logo">
+                    <img src="{{ url_for('static', filename='logo.jpeg') }}" alt="Gopalan College Logo">
+                </div>
+                <h3 class="h4 empty-title">All caught up!</h3>
+                <p class="text-muted empty-text">No papers pending approval.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div id="teacher-details-modal" class="event-modal" aria-hidden="true">
+    <div class="event-modal-card" style="max-width: 760px;">
+        <button class="event-modal-close" onclick="closeTeacherDetails()">&times;</button>
+        <div class="event-modal-header">
+            <span class="event-type-pill pill-event">Teacher Profile</span>
+        </div>
+        <h3 class="event-modal-title" id="teacher-modal-title">Teacher Details</h3>
+        <div id="teacher-modal-body" class="event-modal-desc">Loading...</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block head %}
+{{ super() }}
+<style>
+    .event-modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 17, 13, 0.35);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 999;
+        padding: 16px;
+    }
+    .event-modal.show { display: flex; }
+    .event-modal-card {
+        background: var(--glass-card-bg);
+        border-radius: 16px;
+        padding: 20px;
+        width: 100%;
+        border: 1px solid var(--glass-card-border);
+        box-shadow: 0 20px 50px -20px rgba(0,0,0,0.45);
+        position: relative;
+        backdrop-filter: blur(var(--glass-blur));
+        -webkit-backdrop-filter: blur(var(--glass-blur));
+    }
+    .event-modal-close {
+        position: absolute;
+        top: 10px;
+        right: 12px;
+        border: none;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        cursor: pointer;
+        background: var(--glass-bg);
+    }
+    .event-modal-header { margin-bottom: 8px; }
+    .event-type-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 700;
+    }
+    .pill-event { background: var(--status-info-bg); color: var(--status-info-text); }
+    .stat-card-click {
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .stat-card-click:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--hover-shadow);
+    }
+    #teacher-directory-body .teacher-row {
+        cursor: pointer;
+    }
+    #teacher-directory-body .teacher-row:hover {
+        background: var(--glass-bg);
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function syncTimetableSections() {
+        const sem = document.getElementById('tt-sem')?.value;
+        const sectionSelect = document.getElementById('tt-section');
+        if (!sectionSelect) return;
+        const options = Array.from(sectionSelect.querySelectorAll('option[data-sem]'));
+        let firstVisible = null;
+        options.forEach(opt => {
+            const show = String(opt.dataset.sem) === String(sem);
+            opt.hidden = !show;
+            if (show && !firstVisible) firstVisible = opt;
+        });
+        if (firstVisible) sectionSelect.value = firstVisible.value;
+        else sectionSelect.value = '';
+    }
+
+    function syncPreviewSections() {
+        const sem = document.getElementById('preview-sem')?.value;
+        const sectionSelect = document.getElementById('preview-section');
+        if (!sectionSelect) return;
+        const options = Array.from(sectionSelect.querySelectorAll('option[data-sem]'));
+        let firstVisible = null;
+        options.forEach(opt => {
+            const show = String(opt.dataset.sem) === String(sem);
+            opt.hidden = !show;
+            if (show && !firstVisible) firstVisible = opt;
+        });
+        if (firstVisible) sectionSelect.value = firstVisible.value;
+        else sectionSelect.value = '';
+    }
+
+    function openSectionPreview() {
+        const sem = (document.getElementById('preview-sem')?.value || '').trim();
+        const section = (document.getElementById('preview-section')?.value || '').trim();
+        if (!sem || !section) {
+            alert('Select semester and section for preview.');
+            return;
+        }
+        const url = `/digital-campus?semester=${encodeURIComponent(sem)}&section=${encodeURIComponent(section)}`;
+        window.open(url, '_blank');
+    }
+
+    function showSectionById(id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (id === 'teacher-directory-card') {
+            el.style.display = 'block';
+        }
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function filterTeacherRows() {
+        const q = (document.getElementById('teacher-search')?.value || '').trim().toLowerCase();
+        const status = (document.getElementById('teacher-status-filter')?.value || 'all').trim();
+        const rows = Array.from(document.querySelectorAll('#teacher-directory-body .teacher-row'));
+        let visible = 0;
+        rows.forEach(row => {
+            const rowStatus = (row.dataset.status || '').toLowerCase();
+            const rowSearch = (row.dataset.search || '').toLowerCase();
+            const matchStatus = status === 'all' || rowStatus === status;
+            const matchSearch = !q || rowSearch.includes(q);
+            const show = matchStatus && matchSearch;
+            row.style.display = show ? '' : 'none';
+            if (show) visible += 1;
+        });
+        const count = document.getElementById('teacher-visible-count');
+        if (count) count.textContent = `Showing ${visible} / ${rows.length}`;
+    }
+
+    async function openTeacherDetails(teacherId) {
+        const modal = document.getElementById('teacher-details-modal');
+        const titleEl = document.getElementById('teacher-modal-title');
+        const bodyEl = document.getElementById('teacher-modal-body');
+        titleEl.textContent = 'Teacher Details';
+        bodyEl.innerHTML = 'Loading...';
+        modal.classList.add('show');
+        modal.setAttribute('aria-hidden', 'false');
+
+        try {
+            const resp = await fetch(`/api/hod/teacher/${teacherId}/details`);
+            const data = await resp.json();
+            if (!data.success) {
+                bodyEl.innerHTML = `<div style="color:var(--status-danger-text);">${data.message || 'Unable to load details'}</div>`;
+                return;
+            }
+            const t = data.teacher || {};
+            const subjects = data.subjects || [];
+            const sections = data.sections || [];
+            const stats = data.stats || {};
+            const papers = data.recent_papers || [];
+
+            titleEl.textContent = `${t.name || 'Teacher'} - Full Profile`;
+            bodyEl.innerHTML = `
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:10px; margin-bottom:12px;">
+                    <div><strong>Email:</strong> ${t.email || '-'}</div>
+                    <div><strong>Phone:</strong> ${t.phone || '-'}</div>
+                    <div><strong>Approved:</strong> ${t.approved_by_hod ? 'Yes' : 'No'}</div>
+                    <div><strong>Email Verified:</strong> ${t.email_verified ? 'Yes' : 'No'}</div>
+                </div>
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:8px; margin-bottom:12px;">
+                    <div class="badge" style="background: var(--green-bg); color: var(--green-primary);">Papers: ${stats.total_papers || 0}</div>
+                    <div class="badge" style="background: var(--cream-dark); color: var(--brown);">Approved: ${stats.approved || 0}</div>
+                    <div class="badge" style="background: var(--orange-light); color: var(--brown);">Pending: ${stats.pending || 0}</div>
+                    <div class="badge" style="background: var(--orange); color: var(--white);">Rejected: ${stats.rejected || 0}</div>
+                </div>
+                <div style="margin-bottom:10px;"><strong>Subjects:</strong> ${subjects.length ? subjects.map(s => `${s.subject_code} - ${s.subject_name} (Sem ${s.semester})`).join('<br>') : '-'}</div>
+                <div style="margin-bottom:10px;"><strong>Sections:</strong> ${sections.length ? sections.map(s => `Sem ${s.semester} - ${s.section}`).join('<br>') : '-'}</div>
+                <div><strong>Recent Papers:</strong><br>${papers.length ? papers.map(p => `${p.title} [${p.status}]`).join('<br>') : '-'}</div>
+            `;
+        } catch (e) {
+            bodyEl.innerHTML = `<div style="color:var(--status-danger-text);">Failed to load teacher details.</div>`;
+        }
+    }
+
+    function closeTeacherDetails() {
+        const modal = document.getElementById('teacher-details-modal');
+        modal.classList.remove('show');
+        modal.setAttribute('aria-hidden', 'true');
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        syncTimetableSections();
+        syncPreviewSections();
+        filterTeacherRows();
+        const modal = document.getElementById('teacher-details-modal');
+        modal?.addEventListener('click', (e) => {
+            if (e.target === modal) closeTeacherDetails();
+        });
+
+        document.querySelectorAll('.stat-card-click[data-target]').forEach(card => {
+            card.addEventListener('click', () => {
+                const id = card.getAttribute('data-target');
+                showSectionById(id);
+            });
+        });
+
+        document.querySelectorAll('#teacher-directory-body .teacher-row').forEach(row => {
+            row.addEventListener('click', (e) => {
+                if (e.target.closest('button')) return;
+                const tid = row.getAttribute('data-teacher-id');
+                if (tid) openTeacherDetails(tid);
+            });
+        });
+    });
+
+    document.getElementById('signature-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const fileInput = document.getElementById('signature-file');
+        if (!fileInput.files.length) {
+            alert('Please select a file');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('signature', fileInput.files[0]);
+
+        try {
+            const response = await fetch('/api/upload/signature', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                alert('Signature uploaded successfully!');
+                location.reload();
+            } else {
+                alert(result.message || 'Upload failed');
+            }
+        } catch (error) {
+            alert('Error uploading signature');
+        }
+    });
+
+    document.getElementById('principal-signature-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const fileInput = document.getElementById('principal-signature-file');
+        if (!fileInput.files.length) {
+            alert('Please select a file');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('signature', fileInput.files[0]);
+
+        try {
+            const response = await fetch('/api/upload/principal-signature', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                alert('Principal signature uploaded successfully!');
+                location.reload();
+            } else {
+                alert(result.message || 'Upload failed');
+            }
+        } catch (error) {
+            alert('Error uploading principal signature');
+        }
+    });
+
+    async function approveTeacher(id) {
+        const resp = await fetch(`/api/hod/approve-teacher/${id}`, { method: 'POST' });
+        const result = await resp.json();
+        if (result.success) location.reload();
+        else alert('Failed to approve teacher');
+    }
+</script>
+{% endblock %}
+
+
+
+

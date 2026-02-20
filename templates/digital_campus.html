@@ -1,0 +1,1356 @@
+{% extends "base.html" %}
+
+{% block title %}Digital Campus - Paper Generator{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <div class="container">
+        <div class="dashboard-header fade-in">
+            <div class="section-label">Digital Campus</div>
+            <h1 class="h1">Academic Schedule & Events</h1>
+            <p class="text-muted" style="font-size: 1.125rem;">Stay updated with timetables and upcoming events</p>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <div class="tabs fade-in"
+            style="animation-delay: 0.1s; display: flex; gap: 16px; margin-bottom: 24px; border-bottom: 1px solid var(--glass-card-border);">
+            <button class="tab-btn active" onclick="switchTab('timetable')" id="tab-timetable"
+                style="padding: 12px 24px; background: none; border: none; font-weight: 600; color: var(--green-primary); border-bottom: 2px solid var(--green-primary); cursor: pointer;">
+                Class Timetable
+            </button>
+            <button class="tab-btn" onclick="switchTab('calendar')" id="tab-calendar"
+                style="padding: 12px 24px; background: none; border: none; font-weight: 600; color: var(--text-secondary); cursor: pointer;">
+                Calendar of Events
+            </button>
+        </div>
+
+        <!-- Timetable View -->
+        <div id="view-timetable" class="fade-in" style="animation-delay: 0.2s;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h2 class="h3">Weekly Schedule</h2>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <label for="sem-select" style="font-weight: 500;">Semester:</label>
+                    <select id="sem-select" class="form-input" style="width: auto; padding: 8px;"
+                        onchange="handleSemesterChange()">
+                        {% if allowed_semesters %}
+                            {% for sem in allowed_semesters %}
+                            <option value="{{ sem }}">{{ sem }}{% if sem == '1' %}st{% elif sem == '2' %}nd{% elif sem == '3' %}rd{% else %}th{% endif %} Semester</option>
+                            {% endfor %}
+                        {% else %}
+                            <option value="1">1st Semester</option>
+                            <option value="2">2nd Semester</option>
+                            <option value="3">3rd Semester</option>
+                            <option value="4">4th Semester</option>
+                            <option value="5">5th Semester</option>
+                            <option value="6">6th Semester</option>
+                            <option value="7">7th Semester</option>
+                            <option value="8">8th Semester</option>
+                        {% endif %}
+                    </select>
+                    <label for="section-select" style="font-weight: 500;">Section:</label>
+                    <select id="section-select" class="form-input" style="width: auto; padding: 8px;"
+                        onchange="loadTimetable()"></select>
+                </div>
+            </div>
+
+            <div class="timetable-container">
+                <table class="timetable-grid" id="timetable-table">
+                    <!-- Dynamic Content -->
+                    <tbody id="timetable-body">
+                        <tr>
+                            <td colspan="7" style="padding: 32px; text-align: center;">Loading timetable...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="timetable-details-section" class="timetable-details" style="display: none;">
+                <h3>Course Faculty Details</h3>
+                <div class="details-table-container">
+                    <table class="details-table" id="details-table">
+                        <thead>
+                            <tr>
+                                <th>Code</th>
+                                <th>Course Name</th>
+                                <th>Faculty</th>
+                                <th>Designation</th>
+                                <th>Credits</th>
+                            </tr>
+                        </thead>
+                        <tbody id="details-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div style="margin-top: 16px; display: flex; gap: 16px; font-size: 0.9rem; color: var(--text-secondary);">
+                <span><span
+                        style="display: inline-block; width: 12px; height: 12px; background: var(--glass-bg); margin-right: 4px; border-radius: 2px;"></span>
+                    Break/Lunch</span>
+                <span><span
+                        style="display: inline-block; width: 12px; height: 12px; background: var(--glass-bg); margin-right: 4px; border-radius: 2px;"></span>
+                    Lab Session</span>
+            </div>
+        </div>
+
+        <!-- Calendar View -->
+        <div id="view-calendar" class="fade-in" style="display: none; animation-delay: 0.2s;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <button onclick="changeMonth(-1)" class="btn btn-outline" style="padding: 4px 8px;">&lt;</button>
+                    <h2 class="h3" id="current-month-display" style="margin: 0; min-width: 150px; text-align: center;">
+                        Month Year</h2>
+                    <button onclick="changeMonth(1)" class="btn btn-outline" style="padding: 4px 8px;">&gt;</button>
+                </div>
+                <div style="display: flex; gap: 12px;">
+                    <span class="badge badge-danger">Ref: Exam</span>
+                    <span class="badge badge-info">Holiday</span>
+                    <span class="badge badge-neutral">Event</span>
+                </div>
+            </div>
+
+            <div class="calendar-layout">
+                <div class="calendar-container">
+                    <div class="calendar-header-row">
+                        <div class="cal-header">Sun</div>
+                        <div class="cal-header">Mon</div>
+                        <div class="cal-header">Tue</div>
+                        <div class="cal-header">Wed</div>
+                        <div class="cal-header">Thu</div>
+                        <div class="cal-header">Fri</div>
+                        <div class="cal-header">Sat</div>
+                    </div>
+                    <div class="calendar-grid" id="calendar-days"></div>
+                </div>
+                <div class="event-sidebar">
+                    <div class="event-sidebar-header">
+                        <div class="event-sidebar-title">Events in <span id="sidebar-month"></span></div>
+                        <div class="event-sidebar-subtitle" id="sidebar-count">0 events</div>
+                    </div>
+                    <div class="event-list" id="event-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Event Details Modal -->
+        <div class="event-modal" id="event-modal" aria-hidden="true">
+            <div class="event-modal-card">
+                <button class="event-modal-close" onclick="closeEventModal()">&times;</button>
+                <div class="event-modal-header">
+                    <span class="event-type-pill" id="modal-type">EVENT</span>
+                    <div class="event-modal-date" id="modal-date"></div>
+                </div>
+                <h3 class="event-modal-title" id="modal-title"></h3>
+                <div class="event-modal-desc" id="modal-desc"></div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<style>
+    /* Calendar Container */
+    .calendar-container {
+        background: var(--glass-card-bg);
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: var(--glass-card-shadow);
+        width: 100%;
+        min-width: 0;
+        border: 1px solid var(--glass-card-border);
+        backdrop-filter: blur(var(--glass-blur));
+        -webkit-backdrop-filter: blur(var(--glass-blur));
+    }
+    
+    .calendar-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.6fr) minmax(0, 0.7fr);
+        gap: 20px;
+        align-items: start;
+    }
+    
+    @media (max-width: 1100px) {
+        .calendar-layout {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .calendar-header-row {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 8px;
+        margin-bottom: 12px;
+    }
+
+    .calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 8px;
+        grid-auto-rows: minmax(120px, 1fr);
+        align-content: start;
+    }
+
+    .cal-header {
+        text-align: center;
+        font-weight: 700;
+        padding: 14px 8px;
+        background: var(--glass-bg);
+        border: 1px solid var(--glass-card-border);
+        border-radius: 10px;
+        color: var(--brown);
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .cal-day {
+        background: var(--glass-card-bg);
+        border: 1px solid var(--glass-card-border);
+        border-radius: 12px;
+        min-height: 110px;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        transition: all 0.25s ease;
+        cursor: pointer;
+        overflow: hidden;
+    }
+
+    .cal-day:hover {
+        transform: translateY(-3px);
+        box-shadow: var(--glass-card-shadow);
+        border-color: var(--orange);
+        background: var(--glass-bg);
+    }
+
+    .cal-day .day-number {
+        font-weight: 700;
+        font-size: 1.1rem;
+        color: var(--brown);
+    }
+
+    .cal-day.today {
+        border-color: var(--orange);
+        background: var(--orange-light);
+        box-shadow: 0 0 0 3px rgba(74, 162, 223, 0.2);
+    }
+
+    .cal-day.today .day-number {
+        color: var(--brown);
+    }
+
+    .cal-day.other-month {
+        opacity: 0.35;
+        background: var(--glass-bg);
+    }
+
+    .event-chip {
+        font-size: 0.7rem;
+        padding: 4px 8px;
+        border-radius: 6px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        cursor: pointer;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+        max-width: 100%;
+    }
+
+    .event-chip::before {
+        content: '';
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+
+    .event-exam {
+        background: var(--status-danger-bg);
+        color: var(--status-danger-text);
+    }
+
+    .event-exam::before {
+        background: var(--status-danger-text);
+    }
+
+    .event-holiday {
+        background: var(--status-info-bg);
+        color: var(--status-info-text);
+    }
+
+    .event-holiday::before {
+        background: var(--status-info-text);
+    }
+
+    .event-general {
+        background: var(--glass-bg);
+        color: var(--chip-text-strong);
+    }
+
+    .event-general::before {
+        background: var(--orange);
+    }
+
+    .event-meeting {
+        background: var(--glass-bg);
+        color: var(--chip-text-strong);
+    }
+
+    .event-meeting::before {
+        background: var(--green-light);
+    }
+
+    .event-chip:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 16px -10px rgba(0, 0, 0, 0.25);
+    }
+
+    .event-sidebar {
+        background: var(--glass-card-bg);
+        border-radius: 16px;
+        border: 1px solid var(--glass-card-border);
+        box-shadow: var(--glass-card-shadow);
+        overflow: hidden;
+        position: sticky;
+        top: 12px;
+        backdrop-filter: blur(var(--glass-blur));
+        -webkit-backdrop-filter: blur(var(--glass-blur));
+    }
+
+    .event-sidebar-header {
+        padding: 16px 18px;
+        background: var(--glass-bg);
+        border-bottom: 1px solid var(--glass-card-border);
+    }
+
+    .event-sidebar-title {
+        font-weight: 700;
+        color: var(--brown);
+        font-size: 1rem;
+    }
+
+    .event-sidebar-subtitle {
+        margin-top: 4px;
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+    }
+
+    .event-list {
+        max-height: calc(100vh - 260px);
+        overflow-y: auto;
+        padding: 12px 12px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .event-empty {
+        padding: 12px;
+        color: var(--text-secondary);
+        text-align: center;
+    }
+
+    .event-item {
+        border: 1px solid var(--glass-card-border);
+        border-radius: 12px;
+        padding: 12px;
+        background: var(--glass-card-bg);
+        cursor: pointer;
+        transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+    }
+
+    .event-item:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--glass-card-shadow);
+        border-color: var(--orange);
+    }
+
+    .event-item-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+    }
+
+    .event-item-date {
+        font-weight: 700;
+        color: var(--chip-text-strong);
+        font-size: 0.9rem;
+    }
+
+    .event-item-title {
+        font-weight: 600;
+        color: var(--chip-text-strong);
+        font-size: 0.95rem;
+    }
+
+    .event-type-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .pill-event {
+        background: var(--status-neutral-bg);
+        color: var(--status-neutral-text);
+    }
+
+    .pill-exam {
+        background: var(--status-danger-bg);
+        color: var(--status-danger-text);
+    }
+
+    .pill-holiday {
+        background: var(--status-info-bg);
+        color: var(--status-info-text);
+    }
+
+    .pill-meeting {
+        background: var(--status-neutral-bg);
+        color: var(--status-neutral-text);
+    }
+
+    /* Modal */
+    .event-modal {
+        position: fixed;
+        inset: 0;
+        background: transparent;
+        display: none;
+        z-index: 999;
+    }
+
+.event-modal.show {
+        display: block;
+}
+
+    .event-modal-card {
+        background: var(--glass-card-bg);
+        border-radius: 18px;
+        padding: 20px 22px 24px;
+        max-width: 360px;
+        width: min(360px, calc(100vw - 24px));
+        box-shadow: var(--glass-card-shadow);
+        position: fixed;
+        border: 1px solid var(--glass-card-border);
+        backdrop-filter: blur(var(--glass-blur));
+        -webkit-backdrop-filter: blur(var(--glass-blur));
+        left: 0;
+        top: 0;
+}
+
+    .event-modal-close {
+        position: absolute;
+        right: 12px;
+        top: 10px;
+        background: var(--glass-bg);
+        border: none;
+        border-radius: 50%;
+        width: 32px;
+        height: 32px;
+        font-size: 20px;
+        cursor: pointer;
+    }
+
+    .event-modal-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 10px;
+    }
+
+    .event-modal-date {
+        font-weight: 600;
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+    }
+
+    .event-modal-title {
+        margin: 8px 0 10px;
+        color: var(--brown);
+        font-size: 1.2rem;
+    }
+
+    .event-modal-desc {
+        color: var(--text-secondary);
+        font-size: 0.95rem;
+        line-height: 1.5;
+        white-space: pre-wrap;
+    }
+
+    :root:not([data-theme='dark']) .calendar-container {
+        background: linear-gradient(135deg, rgba(243, 240, 228, 0.9) 0%, rgba(227, 239, 214, 0.8) 100%);
+        border-color: rgba(80, 77, 63, 0.32);
+        box-shadow: 0 24px 48px rgba(33, 28, 21, 0.2);
+    }
+
+    :root:not([data-theme='dark']) .cal-header {
+        background: linear-gradient(135deg, rgba(74, 162, 223, 0.7) 0%, rgba(177, 80, 35, 0.5) 100%);
+        color: var(--brown);
+        box-shadow: 0 8px 18px rgba(33, 28, 21, 0.16);
+    }
+
+    :root:not([data-theme='dark']) .cal-day {
+        background: linear-gradient(145deg, rgba(243, 240, 228, 0.85) 0%, rgba(227, 239, 214, 0.78) 100%);
+        border-color: rgba(80, 77, 63, 0.32);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7), 0 8px 18px rgba(33, 28, 21, 0.08);
+    }
+
+    :root:not([data-theme='dark']) .cal-day:hover {
+        background: linear-gradient(145deg, rgba(243, 240, 228, 0.95) 0%, rgba(227, 239, 214, 0.9) 100%);
+        box-shadow: 0 16px 30px rgba(33, 28, 21, 0.2);
+    }
+
+    :root:not([data-theme='dark']) .event-sidebar {
+        background: rgba(243, 240, 228, 0.88);
+        box-shadow: 0 20px 36px rgba(33, 28, 21, 0.18);
+    }
+
+    :root:not([data-theme='dark']) .event-item {
+        background: rgba(243, 240, 228, 0.9);
+        border-color: rgba(80, 77, 63, 0.24);
+    }
+
+    :root:not([data-theme='dark']) .event-chip {
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.65);
+    }
+
+    :root:not([data-theme='dark']) .cal-day.today {
+        background: linear-gradient(145deg, rgba(74, 162, 223, 0.25) 0%, rgba(177, 80, 35, 0.18) 100%);
+        border-color: var(--orange);
+        box-shadow: 0 10px 22px rgba(74, 162, 223, 0.18);
+    }
+
+    :root:not([data-theme='dark']) .event-exam,
+    :root:not([data-theme='dark']) .pill-exam {
+        background: rgba(177, 80, 35, 0.2);
+        color: var(--status-danger-text);
+    }
+
+    :root:not([data-theme='dark']) .event-holiday,
+    :root:not([data-theme='dark']) .pill-holiday {
+        background: rgba(74, 162, 223, 0.22);
+        color: var(--status-info-text);
+    }
+
+    /* Timetable Styles */
+    .timetable-container {
+        overflow-x: auto;
+        border-radius: 16px;
+        border: 1px solid var(--glass-card-border);
+        box-shadow: var(--glass-card-shadow);
+        background: var(--glass-bg);
+        position: relative;
+    }
+
+    .timetable-grid {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        min-width: 800px;
+        background: var(--glass-card-bg);
+    }
+
+    .timetable-grid th,
+    .timetable-grid td {
+        border: 1px solid var(--glass-card-border);
+        padding: 14px 12px;
+        text-align: center;
+    }
+
+    .timetable-grid th {
+        background: linear-gradient(135deg, var(--orange) 0%, var(--green-primary) 100%);
+        color: var(--white);
+        font-weight: 600;
+        white-space: nowrap;
+        position: sticky;
+        top: 0;
+        z-index: 3;
+    }
+
+    .timetable-grid td strong {
+        color: var(--green-primary);
+    }
+    
+    .timetable-grid td.break-cell {
+        background: linear-gradient(180deg, var(--cream-dark) 0%, var(--glass-bg) 100%);
+        color: var(--brown);
+        font-weight: 700;
+        letter-spacing: 0.5px;
+    }
+    
+    .timetable-grid td.break-cell .break-text {
+        display: inline-block;
+        writing-mode: vertical-rl;
+        transform: rotate(180deg);
+        text-transform: uppercase;
+        letter-spacing: 2px;
+    }
+    
+    .timetable-grid td.lab-cell {
+        background: linear-gradient(180deg, var(--cream-dark) 0%, var(--glass-bg) 100%);
+        color: var(--brown);
+        font-weight: 600;
+    }
+
+    .timetable-grid td.class-cell {
+        background: var(--glass-card-bg);
+        color: var(--brown);
+        font-weight: 600;
+    }
+
+    .timetable-grid td.empty-cell {
+        color: var(--text-secondary);
+        background: var(--glass-bg);
+    }
+    
+    .timetable-grid tr:nth-child(even) td.class-cell {
+        background: var(--glass-bg);
+    }
+
+    .timetable-grid td:first-child,
+    .timetable-grid th:first-child {
+        position: sticky;
+        left: 0;
+        z-index: 2;
+        background: var(--green-bg);
+        font-weight: 700;
+        color: var(--brown);
+    }
+
+    .timetable-grid th:first-child {
+        z-index: 4;
+        background: linear-gradient(135deg, var(--orange) 0%, var(--green-primary) 100%);
+        color: var(--white);
+    }
+    
+    .timetable-grid td {
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    
+    .timetable-grid td.class-cell:hover,
+    .timetable-grid td.lab-cell:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--glass-card-shadow);
+    }
+
+    /* Faculty Details Table */
+    .timetable-details {
+        margin-top: 24px;
+        padding: 0;
+        background: var(--glass-card-bg);
+        border-radius: 18px;
+        border: 1px solid var(--glass-card-border);
+        box-shadow: var(--glass-card-shadow);
+        overflow: hidden;
+    }
+
+    .timetable-details h3 {
+        margin: 0;
+        padding: 18px 20px;
+        color: var(--brown);
+        font-size: 1.15rem;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: var(--glass-bg);
+        border-bottom: 1px solid var(--glass-card-border);
+    }
+
+    .details-table-container {
+        overflow-x: auto;
+        background: var(--glass-card-bg);
+    }
+
+    .details-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.92rem;
+    }
+
+    .details-table th {
+        background: var(--glass-bg);
+        color: var(--brown);
+        font-weight: 700;
+        padding: 14px 16px;
+        text-align: left;
+        border-bottom: 1px solid var(--glass-card-border);
+        position: sticky;
+        top: 0;
+        z-index: 2;
+    }
+
+    .details-table td {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--glass-card-border);
+        color: var(--brown);
+    }
+
+    .details-table tr:hover td {
+        background: var(--glass-bg);
+    }
+
+    .details-table .code-badge {
+        background: linear-gradient(135deg, var(--orange) 0%, var(--green-primary) 100%);
+        color: var(--white);
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 0.8rem;
+    }
+
+    .details-table .designation-badge {
+        background: var(--status-info-bg);
+        color: var(--brown);
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.8rem;
+    }
+    
+    .details-table .split-line {
+        line-height: 1.2;
+    }
+    
+    .details-table .split-line + .split-line {
+        margin-top: 4px;
+    }
+    
+    .timetable-grid .split-line {
+        line-height: 1.2;
+    }
+    
+    .timetable-grid .split-line + .split-line {
+        margin-top: 4px;
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const department = "{{ user.department }}";
+    const initialSemester = "{{ initial_semester or (allowed_semesters[0] if allowed_semesters else '1') }}";
+    const initialSection = "{{ initial_section or '' }}";
+    let currentSemester = initialSemester;
+    const sectionsBySemester = {{ (allowed_sections_map or {}) | tojson }};
+    let currentDate = new Date();
+    let eventsData = [];
+
+    function handleSemesterChange() {
+        populateSectionOptions();
+        loadTimetable();
+    }
+
+    function populateSectionOptions() {
+        const sem = document.getElementById('sem-select').value;
+        const sectionSelect = document.getElementById('section-select');
+        if (!sectionSelect) return;
+        const previous = sectionSelect.value;
+        const options = sectionsBySemester[sem] || [];
+        sectionSelect.innerHTML = '';
+        if (options.length === 0) {
+            sectionSelect.innerHTML = '<option value="">No Sections</option>';
+            return;
+        }
+        let selectedFromInitial = false;
+        options.forEach((section, idx) => {
+            const opt = document.createElement('option');
+            opt.value = section;
+            opt.textContent = section;
+            sectionSelect.appendChild(opt);
+            if (previous && previous === section) {
+                opt.selected = true;
+            }
+            if (!previous && initialSection && initialSection === section) {
+                opt.selected = true;
+                selectedFromInitial = true;
+            }
+        });
+        if (!previous && !selectedFromInitial) {
+            sectionSelect.selectedIndex = 0;
+        }
+    }
+
+    // Init
+    document.addEventListener('DOMContentLoaded', () => {
+        const semSelect = document.getElementById('sem-select');
+        if (semSelect && initialSemester) {
+            semSelect.value = initialSemester;
+        }
+        populateSectionOptions();
+        loadTimetable();
+        const modal = document.getElementById('event-modal');
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeEventModal();
+        });
+        document.addEventListener('click', (e) => {
+            const target = e.target.closest('[data-event-id]');
+            if (!target) return;
+            const id = target.getAttribute('data-event-id');
+            const evt = eventsData.find(ev => String(ev.id) === String(id));
+            if (evt) openEventModal(evt, target, e);
+        });
+    });
+
+    function switchTab(tab) {
+        document.querySelectorAll('.tab-btn').forEach(b => {
+            b.style.color = 'var(--text-secondary)';
+            b.style.borderBottom = 'none';
+        });
+        document.getElementById('tab-' + tab).style.color = 'var(--green-primary)';
+        document.getElementById('tab-' + tab).style.borderBottom = '2px solid var(--green-primary)';
+
+        document.getElementById('view-timetable').style.display = tab === 'timetable' ? 'block' : 'none';
+        document.getElementById('view-calendar').style.display = tab === 'calendar' ? 'block' : 'none';
+        if (tab === 'calendar') {
+            fetchEvents(currentSemester).then(() => renderCalendar());
+        }
+    }
+
+    // --- Timetable Logic ---
+    async function loadTimetable() {
+        const sem = document.getElementById('sem-select').value;
+        const section = (document.getElementById('section-select')?.value || '').trim();
+        currentSemester = sem;
+        const tbody = document.getElementById('timetable-body');
+        const table = document.getElementById('timetable-table');
+        const detailsSection = document.getElementById('timetable-details-section');
+
+        tbody.innerHTML = '<tr><td colspan="8" style="padding: 32px; text-align: center;">Loading...</td></tr>';
+        detailsSection.style.display = 'none';
+
+        if (!section) {
+            table.innerHTML = `<tbody id="timetable-body"><tr><td colspan="8" style="padding: 32px; text-align: center; color: var(--text-secondary);">No section configured for Semester ${sem}. Ask HOD to add section-wise timetable.</td></tr></tbody>`;
+            await fetchEvents(sem);
+            renderCalendar();
+            return;
+        }
+
+        try {
+            const query = section ? `?section=${encodeURIComponent(section)}` : '';
+            const resp = await fetch(`/api/timetable/${department}/${sem}${query}`);
+            const data = await resp.json();
+
+            if (data.entries && data.entries.length > 0) {
+                renderTimetableDynamic(data.entries, table);
+            } else {
+                const sectionLabel = section ? ` Section ${section}` : '';
+                table.innerHTML = `<tbody id="timetable-body"><tr><td colspan="8" style="padding: 32px; text-align: center; color: var(--text-secondary);">No timetable data found for Semester ${sem}${sectionLabel}.</td></tr></tbody>`;
+            }
+
+            if (data.details && data.details.trim()) {
+                renderDetailsTable(data.details);
+                detailsSection.style.display = 'block';
+            }
+
+        } catch (e) {
+            console.error(e);
+            table.innerHTML = '<tbody id="timetable-body"><tr><td colspan="8" style="padding: 32px; text-align: center; color: var(--status-danger-text);">Error loading timetable.</td></tr></tbody>';
+        }
+        await fetchEvents(sem);
+        renderCalendar();
+    }
+
+    function renderDetailsTable(detailsJson) {
+        const tbody = document.getElementById('details-tbody');
+        try {
+            const details = JSON.parse(detailsJson);
+            if (!details || details.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-secondary);">No faculty details available</td></tr>';
+                return;
+            }
+
+            const splitMulti = (val) => {
+                const text = (val || '').toString().trim();
+                if (!text) return ['-'];
+                
+                const bySlash = text.split('/').map(p => p.trim()).filter(Boolean);
+                if (bySlash.length > 1) return bySlash;
+                
+                const byComma = text.split(',').map(p => p.trim()).filter(Boolean);
+                if (byComma.length > 1) return byComma;
+                
+                const byAnd = text.split(/\s*&\s*|\s+and\s+/i).map(p => p.trim()).filter(Boolean);
+                if (byAnd.length > 1) return byAnd;
+                
+                const honorificRe = /\b(?:Dr|Mr|Mrs|Ms|Prof|Sri|Smt)\.?\b/gi;
+                const matches = Array.from(text.matchAll(honorificRe));
+                if (matches.length > 1) {
+                    const starts = matches.map(m => m.index).filter(i => i !== null);
+                    const parts = [];
+                    if (starts[0] > 0) {
+                        const prefix = text.slice(0, starts[0]).trim();
+                        if (prefix) parts.push(prefix);
+                    }
+                    for (let i = 0; i < starts.length; i++) {
+                        const start = starts[i];
+                        const end = i + 1 < starts.length ? starts[i + 1] : text.length;
+                        const part = text.slice(start, end).trim();
+                        if (part) parts.push(part);
+                    }
+                    if (parts.length > 1) return parts;
+                }
+                
+                return [text];
+            };
+            
+            const splitDesignation = (val) => {
+                const text = (val || '').toString().trim();
+                if (!text) return ['-'];
+                
+                const bySlash = text.split('/').map(p => p.trim()).filter(Boolean);
+                if (bySlash.length > 1) return bySlash;
+                
+                const byComma = text.split(',').map(p => p.trim()).filter(Boolean);
+                if (byComma.length > 1) return byComma;
+                
+                const parts = text.split(/\s+/).map(p => p.trim()).filter(Boolean);
+                const allUpper = parts.every(p => /^[A-Z]{2,4}$/.test(p));
+                if (parts.length > 1 && allUpper) return parts;
+                
+                return [text];
+            };
+            
+            const renderSplitLines = (val, makeStrong = false) => {
+                const parts = splitMulti(val);
+                if (parts.length === 1 && parts[0] === '-') return '-';
+                return parts.map(p => (
+                    `<div class="split-line">${makeStrong ? `<strong>${p}</strong>` : p}</div>`
+                )).join('');
+            };
+
+            let html = '';
+            details.forEach(item => {
+                html += `
+                    <tr>
+                        <td><span class="code-badge">${item.code || '-'}</span></td>
+                        <td>${renderSplitLines(item.name || '-')}</td>
+                        <td>${renderSplitLines(item.faculty || '-', true)}</td>
+                        <td>${(() => {
+                            const parts = splitDesignation(item.designation || '');
+                            if (parts.length === 1 && parts[0] === '-') return '-';
+                            return parts.map(p => `<div class="split-line"><span class="designation-badge">${p}</span></div>`).join('');
+                        })()}</td>
+                        <td>${item.credits || '-'}</td>
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = html;
+        } catch (e) {
+            // Fallback to raw text if JSON parsing fails
+            tbody.innerHTML = `<tr><td colspan="5" style="white-space: pre-wrap;">${detailsJson}</td></tr>`;
+        }
+    }
+
+    function renderTimetableDynamic(entries, table) {
+        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+        const normalize = (s) => (s || '').toString().trim();
+        const isBreak = (s) => /BREAK|LUNCH/i.test(s || '');
+        const isLab = (s) => /LAB/i.test(s || '');
+        const splitMulti = (val) => {
+            const text = normalize(val);
+            if (!text) return ['-'];
+            
+            const bySlash = text.split('/').map(p => p.trim()).filter(Boolean);
+            if (bySlash.length > 1) return bySlash;
+            
+            const byComma = text.split(',').map(p => p.trim()).filter(Boolean);
+            if (byComma.length > 1) return byComma;
+            
+            const byAnd = text.split(/\s*&\s*|\s+and\s+/i).map(p => p.trim()).filter(Boolean);
+            if (byAnd.length > 1) return byAnd;
+            
+            const honorificRe = /\b(?:Dr|Mr|Mrs|Ms|Prof|Sri|Smt)\.?\b/gi;
+            const matches = Array.from(text.matchAll(honorificRe));
+            if (matches.length > 1) {
+                const starts = matches.map(m => m.index).filter(i => i !== null);
+                const parts = [];
+                if (starts[0] > 0) {
+                    const prefix = text.slice(0, starts[0]).trim();
+                    if (prefix) parts.push(prefix);
+                }
+                for (let i = 0; i < starts.length; i++) {
+                    const start = starts[i];
+                    const end = i + 1 < starts.length ? starts[i + 1] : text.length;
+                    const part = text.slice(start, end).trim();
+                    if (part) parts.push(part);
+                }
+                if (parts.length > 1) return parts;
+            }
+            
+            return [text];
+        };
+        const formatSplitCell = (val) => {
+            const parts = splitMulti(val);
+            if (parts.length === 1 && parts[0] === '-') return '-';
+            return parts.map(p => `<div class="split-line">${p}</div>`).join('');
+        };
+
+        // 1) Identify unique Time Slots (preserve insertion order, then sort by time)
+        const slotSet = new Set();
+        entries.forEach(e => slotSet.add(e.time_slot));
+        let slots = Array.from(slotSet);
+
+        const parseTime = (t) => {
+            const text = (t || '').toString();
+            const re = /(\d{1,2}):(\d{2})\s*([AaPp]\.?[Mm]\.?)?/g;
+            const times = [];
+            let m;
+            while ((m = re.exec(text)) !== null) {
+                times.push({
+                    h: parseInt(m[1], 10),
+                    min: parseInt(m[2], 10),
+                    mer: m[3] ? m[3].toLowerCase()[0] : null
+                });
+            }
+            if (!times.length) return null;
+            
+            const start = times[0];
+            const end = times.length > 1 ? times[1] : null;
+            let mer = start.mer;
+            
+            if (!mer && end && end.mer) {
+                if (end.mer === 'p') {
+                    if (start.h === 12) {
+                        mer = 'p';
+                    } else if (start.h <= 6) {
+                        mer = 'p';
+                    } else {
+                        mer = 'a';
+                    }
+                } else {
+                    mer = 'a';
+                }
+            }
+            
+            if (!mer) {
+                mer = start.h < 7 ? 'p' : 'a';
+            }
+            
+            let h = start.h;
+            if (mer === 'p' && h < 12) h += 12;
+            if (mer === 'a' && h === 12) h = 0;
+            return h * 60 + start.min;
+        };
+
+        slots.sort((a, b) => {
+            const ta = parseTime(a);
+            const tb = parseTime(b);
+            if (ta === null && tb === null) return 0;
+            if (ta === null) return 1;
+            if (tb === null) return -1;
+            return ta - tb;
+        });
+
+        // 2) Build a grid day x slot
+        const grid = {};
+        days.forEach(day => {
+            grid[day] = slots.map(() => '');
+        });
+
+        // Detect break/lunch slots from any entries
+        const breakLabelBySlot = {};
+        entries.forEach(e => {
+            const subj = normalize(e.subject);
+            if (isBreak(subj)) {
+                breakLabelBySlot[e.time_slot] = subj.toUpperCase();
+            }
+        });
+
+        entries.forEach(e => {
+            const dayKey = days.find(d => e.day.toLowerCase().startsWith(d.toLowerCase()));
+            if (!dayKey) return;
+            const slotIdx = slots.indexOf(e.time_slot);
+            if (slotIdx === -1) return;
+            if (!grid[dayKey][slotIdx]) {
+                grid[dayKey][slotIdx] = e.subject || '';
+            }
+        });
+
+        // Force break/lunch to appear for all days in those slots
+        Object.keys(breakLabelBySlot).forEach(slot => {
+            const idx = slots.indexOf(slot);
+            if (idx === -1) return;
+            days.forEach(day => {
+                grid[day][idx] = breakLabelBySlot[slot];
+            });
+        });
+
+        // 3) Identify vertical merge columns for breaks/lunch
+        const verticalMerge = new Set();
+        slots.forEach((slot, idx) => {
+            const label = breakLabelBySlot[slot];
+            if (label) {
+                verticalMerge.add(idx);
+                return;
+            }
+            const first = normalize(grid[days[0]][idx]);
+            if (!first || !isBreak(first)) return;
+            const allSame = days.every(d => normalize(grid[d][idx]).toLowerCase() === first.toLowerCase());
+            if (allSame) verticalMerge.add(idx);
+        });
+
+        // 4) Build Header
+        let thead = '<thead><tr><th>Day / Time</th>';
+        slots.forEach(slot => {
+            thead += `<th>${slot}</th>`;
+        });
+        thead += '</tr></thead>';
+
+        // 5) Build Body with colspan/rowspan merges
+        let tbody = '<tbody>';
+
+        days.forEach((day, rowIdx) => {
+            tbody += `<tr><td><strong>${day.toUpperCase()}</strong></td>`;
+            let col = 0;
+            while (col < slots.length) {
+                if (verticalMerge.has(col)) {
+                    if (rowIdx === 0) {
+                        const content = normalize(grid[day][col]) || 'BREAK';
+                        tbody += `<td rowspan="${days.length}" class="break-cell"><span class="break-text">${content}</span></td>`;
+                    }
+                    col += 1;
+                    continue;
+                }
+
+                const subject = normalize(grid[day][col]);
+                if (!subject) {
+                    tbody += '<td class="empty-cell">-</td>';
+                    col += 1;
+                    continue;
+                }
+
+                // Horizontal merge for repeated subjects across adjacent slots
+                let span = 1;
+                while (col + span < slots.length && !verticalMerge.has(col + span)) {
+                    const next = normalize(grid[day][col + span]);
+                    if (!next || next.toLowerCase() !== subject.toLowerCase()) break;
+                    span += 1;
+                }
+
+                const isBreakCell = isBreak(subject);
+                const cls = isBreakCell ? 'break-cell' : (isLab(subject) ? 'lab-cell' : 'class-cell');
+                const colspan = span > 1 ? ` colspan="${span}"` : '';
+                const cellInner = isBreakCell ? `<span class="break-text">${subject}</span>` : formatSplitCell(subject);
+                tbody += `<td${colspan} class="${cls}">${cellInner}</td>`;
+                col += span;
+            }
+            tbody += '</tr>';
+        });
+
+        tbody += '</tbody>';
+        table.innerHTML = thead + tbody;
+    }
+
+    // --- Calendar Logic ---
+    async function fetchEvents(semester) {
+        try {
+            const semQuery = semester ? `?semester=${encodeURIComponent(semester)}` : '';
+            const resp = await fetch(`/api/calendar-events${semQuery}`);
+            const data = await resp.json();
+            if (data.success) {
+                eventsData = data.events;
+            }
+        } catch (e) {
+            console.error("Error fetching events", e);
+        }
+    }
+
+    function changeMonth(delta) {
+        currentDate.setMonth(currentDate.getMonth() + delta);
+        renderCalendar();
+    }
+
+    function eventTypeClass(type) {
+        const t = (type || 'event').toLowerCase();
+        if (t === 'holiday') return 'event-holiday';
+        if (t === 'exam') return 'event-exam';
+        if (t === 'meeting') return 'event-meeting';
+        return 'event-general';
+    }
+    
+    function eventPillClass(type) {
+        const t = (type || 'event').toLowerCase();
+        if (t === 'holiday') return 'pill-holiday';
+        if (t === 'exam') return 'pill-exam';
+        if (t === 'meeting') return 'pill-meeting';
+        return 'pill-event';
+    }
+    
+    function formatDateDisplay(dateStr) {
+        const d = new Date(dateStr + 'T00:00:00');
+        if (isNaN(d.getTime())) return dateStr;
+        const opts = { day: '2-digit', month: 'short', year: 'numeric' };
+        return d.toLocaleDateString(undefined, opts);
+    }
+    
+    function openEventModal(evt, anchorEl, pointerEvent) {
+        const modal = document.getElementById('event-modal');
+        const card = modal.querySelector('.event-modal-card');
+        const typeEl = document.getElementById('modal-type');
+        const dateEl = document.getElementById('modal-date');
+        const titleEl = document.getElementById('modal-title');
+        const descEl = document.getElementById('modal-desc');
+        
+        const type = (evt.type || 'event').toUpperCase();
+        typeEl.textContent = type;
+        typeEl.className = `event-type-pill ${eventPillClass(evt.type)}`;
+        dateEl.textContent = formatDateDisplay(evt.event_date);
+        titleEl.textContent = evt.title || '';
+        descEl.textContent = evt.description || '';
+        
+        modal.classList.add('show');
+        modal.setAttribute('aria-hidden', 'false');
+
+        const padding = 12;
+            card.style.visibility = 'hidden';
+            card.style.left = '0px';
+            card.style.top = '0px';
+            card.style.transform = 'translate(0, 0)';
+
+        requestAnimationFrame(() => {
+            const cardRect = card.getBoundingClientRect();
+            let left = 0;
+            let top = 0;
+
+            if (pointerEvent && typeof pointerEvent.clientX === 'number') {
+                left = (typeof pointerEvent.pageX === 'number' ? pointerEvent.pageX : pointerEvent.clientX) - (cardRect.width / 2);
+                top = (typeof pointerEvent.pageY === 'number' ? pointerEvent.pageY : pointerEvent.clientY) - (cardRect.height / 2);
+            } else {
+                const anchor = anchorEl || document.body;
+                const rect = anchor.getBoundingClientRect();
+                left = rect.left + window.scrollX + (rect.width / 2) - (cardRect.width / 2);
+                top = rect.top + window.scrollY + (rect.height / 2) - (cardRect.height / 2);
+            }
+
+            const maxLeft = window.scrollX + window.innerWidth - cardRect.width - padding;
+            const minLeft = window.scrollX + padding;
+            const maxTop = window.scrollY + window.innerHeight - cardRect.height - padding;
+            const minTop = window.scrollY + padding;
+
+            if (left > maxLeft) left = maxLeft;
+            if (left < minLeft) left = minLeft;
+
+            if (top > maxTop) top = maxTop;
+            if (top < minTop) top = minTop;
+
+            card.style.left = `${left}px`;
+            card.style.top = `${top}px`;
+            card.style.visibility = 'visible';
+        });
+    }
+    
+    function closeEventModal() {
+        const modal = document.getElementById('event-modal');
+        modal.classList.remove('show');
+        modal.setAttribute('aria-hidden', 'true');
+    }
+    
+    function renderEventSidebar() {
+        const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth();
+        
+        const list = document.getElementById('event-list');
+        const monthLabel = document.getElementById('sidebar-month');
+        const countLabel = document.getElementById('sidebar-count');
+        
+        monthLabel.textContent = `${monthNames[month]} ${year}`;
+        
+        const monthEvents = eventsData.filter(e => {
+            if (!e.event_date) return false;
+            const d = new Date(e.event_date + 'T00:00:00');
+            return d.getFullYear() === year && d.getMonth() === month;
+        }).sort((a, b) => (a.event_date || '').localeCompare(b.event_date || ''));
+        
+        countLabel.textContent = `${monthEvents.length} events`;
+        
+        if (!monthEvents.length) {
+            list.innerHTML = '<div class="event-empty">No events this month</div>';
+            return;
+        }
+        
+        list.innerHTML = monthEvents.map(e => {
+            const pillClass = eventPillClass(e.type);
+            const dateLabel = formatDateDisplay(e.event_date);
+            const safe = (s) => (s || '').toString().replace(/"/g, '&quot;');
+            return `
+                <div class="event-item" data-event-id="${e.id}">
+                    <div class="event-item-header">
+                        <div class="event-item-date">${dateLabel}</div>
+                        <span class="event-type-pill ${pillClass}">${(e.type || 'event').toUpperCase()}</span>
+                    </div>
+                    <div class="event-item-title">${safe(e.title)}</div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function renderCalendar() {
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth();
+
+        // Update header
+        const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        document.getElementById('current-month-display').textContent = `${monthNames[month]} ${year}`;
+
+        const firstDay = new Date(year, month, 1);
+        const lastDay = new Date(year, month + 1, 0);
+        const daysInMonth = lastDay.getDate();
+        const startingDayOfWeek = firstDay.getDay();
+        const todayStr = new Date().toISOString().slice(0, 10);
+
+        let html = '';
+
+        // Blank cells for days before start of month
+        for (let i = 0; i < startingDayOfWeek; i++) {
+            html += `<div class="cal-day other-month"></div>`;
+        }
+
+        // Days of month
+        for (let day = 1; day <= daysInMonth; day++) {
+            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const isToday = todayStr === dateStr;
+            const dayEvents = eventsData.filter(e => e.event_date === dateStr);
+
+            html += `
+                <div class="cal-day ${isToday ? 'today' : ''}">
+                    <div class="day-number">${day}</div>
+                    <div style="display: flex; flex-direction: column; gap: 3px; overflow: hidden;">
+                        ${dayEvents.slice(0, 3).map(evt => {
+                const cls = eventTypeClass(evt.type);
+                const title = (evt.title || '').toString().replace(/"/g, '&quot;');
+                return `<div class="event-chip ${cls}" data-event-id="${evt.id}" title="${title}">${title}</div>`;
+            }).join('')}
+                        ${dayEvents.length > 3 ? `<div style="font-size: 0.7rem; color: var(--text-secondary);">+${dayEvents.length - 3} more</div>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Fill remaining cells to complete the grid
+        const totalCells = startingDayOfWeek + daysInMonth;
+        const remainingCells = (7 - (totalCells % 7)) % 7;
+        for (let i = 0; i < remainingCells; i++) {
+            html += `<div class="cal-day other-month"></div>`;
+        }
+
+        document.getElementById('calendar-days').innerHTML = html;
+        renderEventSidebar();
+    }
+
+</script>
+{% endblock %}
+
+
+
+

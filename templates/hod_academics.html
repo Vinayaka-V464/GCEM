@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+
+{% block title %}HOD Academics - Paper Generator{% endblock %}
+
+{% set show_navbar = true %}
+
+{% block content %}
+<div class="dashboard">
+    <div class="container">
+        <div class="dashboard-header fade-in">
+            <div class="section-label">HOD Academics</div>
+            <h1 class="h1">Academic Workspace</h1>
+            <p class="text-muted" style="font-size: 1.0625rem;">Set your class handling profile and manage papers, notes, and question banks from one page.</p>
+        </div>
+
+        <div class="dashboard-grid fade-in" style="animation-delay: 0.08s;">
+            <div class="stat-card">
+                <div class="stat-icon">📘</div>
+                <div class="stat-value">{{ subjects|length if subjects else 0 }}</div>
+                <div class="stat-label">My Subjects</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">🧩</div>
+                <div class="stat-value">{{ sections|length if sections else 0 }}</div>
+                <div class="stat-label">My Sections</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">🧭</div>
+                <div class="stat-value">1</div>
+                <div class="stat-label">Academic Access</div>
+            </div>
+        </div>
+
+        <div class="dashboard-grid fade-in mt-4" style="animation-delay: 0.12s; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));">
+            <div class="card" style="margin: 0;">
+                <div class="section-label">Profile</div>
+                <div class="form-group">
+                    <label class="form-label">Phone Number</label>
+                    <input id="hod-phone" type="text" class="form-input" value="{{ user.phone or '' }}" placeholder="Enter phone number">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Primary Class Handling</label>
+                    <select id="hod-primary-section" class="form-input">
+                        <option value="">Select section</option>
+                        {% for sec in section_catalog %}
+                        <option value="{{ sec.semester }}|{{ sec.section }}" {% if (user.semester|string == sec.semester|string) and ((user.section or '')|upper == (sec.section or '')|upper) %}selected{% endif %}>
+                            Sem {{ sec.semester }} - {{ sec.section }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button class="btn btn-secondary" onclick="saveHodProfile()">Save Profile</button>
+            </div>
+
+            <div class="card" style="margin: 0;">
+                <div class="section-label">Add Subject</div>
+                <div class="form-group">
+                    <label class="form-label">Subject Catalog</label>
+                    <select id="hod-subject-catalog" class="form-input">
+                        <option value="">Select subject</option>
+                        {% for s in subject_catalog %}
+                        <option value="{{ s.id }}">{{ s.subject_code }} - {{ s.subject_name }} (Sem {{ s.semester }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button class="btn btn-primary" onclick="addHodSubject()">Add Subject</button>
+            </div>
+
+            <div class="card" style="margin: 0;">
+                <div class="section-label">Add Section</div>
+                <div class="form-group">
+                    <label class="form-label">Section Catalog</label>
+                    <select id="hod-section-catalog" class="form-input">
+                        <option value="">Select section</option>
+                        {% for sec in section_catalog %}
+                        <option value="{{ sec.id }}">Sem {{ sec.semester }} - {{ sec.section }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button class="btn btn-primary" onclick="addHodSection()">Add Section</button>
+            </div>
+        </div>
+
+        <div class="dashboard-grid fade-in mt-4" style="animation-delay: 0.18s; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));">
+            <div class="card" style="margin: 0;">
+                <div class="section-label">My Subjects</div>
+                <div id="hod-subject-list" class="stack-list">
+                    {% if subjects %}
+                        {% for s in subjects %}
+                        <div class="stack-row" id="subject-row-{{ s.id }}">
+                            <div>
+                                <div class="stack-title">{{ s.subject_code }} - {{ s.subject_name }}</div>
+                                <div class="stack-meta">Semester {{ s.semester }}</div>
+                            </div>
+                            <button class="btn btn-outline btn-sm" onclick="removeHodSubject({{ s.id }})">Remove</button>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="text-muted">No subjects assigned. Add at least one subject to generate papers.</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card" style="margin: 0;">
+                <div class="section-label">My Sections</div>
+                <div id="hod-section-list" class="stack-list">
+                    {% if sections %}
+                        {% for sec in sections %}
+                        <div class="stack-row" id="section-row-{{ sec.id }}">
+                            <div>
+                                <div class="stack-title">Semester {{ sec.semester }}</div>
+                                <div class="stack-meta">Section {{ sec.section }}</div>
+                            </div>
+                            <button class="btn btn-outline btn-sm" onclick="removeHodSection({{ sec.id }})">Remove</button>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="text-muted">No sections assigned.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="section-label mt-4 fade-in" style="animation-delay: 0.22s;">Academic Actions</div>
+        <div class="quick-actions fade-in" style="animation-delay: 0.26s;">
+            <a href="/generate" class="action-card highlight">
+                <div class="action-card-icon">✨</div>
+                <h3 class="h4">Generate Paper</h3>
+                <p>Create question papers with your assigned subjects</p>
+            </a>
+            <a href="/upload-notes" class="action-card">
+                <div class="action-card-icon">📝</div>
+                <h3 class="h4">Upload Notes</h3>
+                <p>Add notes for your classes</p>
+            </a>
+            <a href="/upload-qb" class="action-card">
+                <div class="action-card-icon">📚</div>
+                <h3 class="h4">Upload QB</h3>
+                <p>Upload module-wise question banks</p>
+            </a>
+            <a href="/my-resources" class="action-card">
+                <div class="action-card-icon">📦</div>
+                <h3 class="h4">My Resources</h3>
+                <p>View all notes and question banks uploaded by you</p>
+            </a>
+            <a href="/hod/my-papers" class="action-card">
+                <div class="action-card-icon">🗂️</div>
+                <h3 class="h4">My Papers</h3>
+                <p>View papers generated by you</p>
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block head %}
+{{ super() }}
+<style>
+    .stack-list {
+        display: grid;
+        gap: 10px;
+    }
+
+    .stack-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 10px 12px;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 10px;
+        background: var(--card-bg);
+    }
+
+    .stack-title {
+        font-weight: 700;
+        color: var(--brown);
+    }
+
+    .stack-meta {
+        font-size: 0.86rem;
+        color: var(--brown-light);
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function saveHodProfile() {
+        const phone = (document.getElementById('hod-phone').value || '').trim();
+        const sec = (document.getElementById('hod-primary-section').value || '').trim();
+        let semester = '';
+        let section = '';
+        if (sec) {
+            const parts = sec.split('|');
+            semester = parts[0] || '';
+            section = parts[1] || '';
+        }
+
+        const resp = await fetch('/api/hod/profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone, semester, section })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            alert('Profile updated.');
+            location.reload();
+        } else {
+            alert(data.message || 'Failed to update profile');
+        }
+    }
+
+    async function addHodSubject() {
+        const catalogId = (document.getElementById('hod-subject-catalog').value || '').trim();
+        if (!catalogId) {
+            alert('Select a subject.');
+            return;
+        }
+        const resp = await fetch('/api/hod/self/subjects', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ catalog_subject_id: catalogId })
+        });
+        const data = await resp.json();
+        if (!data.success) {
+            alert(data.message || 'Failed to add subject');
+            return;
+        }
+        location.reload();
+    }
+
+    async function removeHodSubject(subjectId) {
+        const resp = await fetch(`/api/hod/self/subjects/${subjectId}/remove`, { method: 'POST' });
+        const data = await resp.json();
+        if (!data.success) {
+            alert(data.message || 'Failed to remove subject');
+            return;
+        }
+        const row = document.getElementById(`subject-row-${subjectId}`);
+        if (row) row.remove();
+        if (!document.querySelector('#hod-subject-list .stack-row')) {
+            location.reload();
+        }
+    }
+
+    async function addHodSection() {
+        const catalogId = (document.getElementById('hod-section-catalog').value || '').trim();
+        if (!catalogId) {
+            alert('Select a section.');
+            return;
+        }
+        const resp = await fetch('/api/hod/self/sections', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ catalog_section_id: catalogId })
+        });
+        const data = await resp.json();
+        if (!data.success) {
+            alert(data.message || 'Failed to add section');
+            return;
+        }
+        location.reload();
+    }
+
+    async function removeHodSection(sectionId) {
+        const resp = await fetch(`/api/hod/self/sections/${sectionId}/remove`, { method: 'POST' });
+        const data = await resp.json();
+        if (!data.success) {
+            alert(data.message || 'Failed to remove section');
+            return;
+        }
+        const row = document.getElementById(`section-row-${sectionId}`);
+        if (row) row.remove();
+        if (!document.querySelector('#hod-section-list .stack-row')) {
+            location.reload();
+        }
+    }
+</script>
+{% endblock %}

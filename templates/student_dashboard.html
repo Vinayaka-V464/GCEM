@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+
+{% block title %}Student Dashboard - Paper Generator{% endblock %}
+
+{% set show_navbar = true %}
+
+{% block content %}
+<div class="dashboard">
+    <div class="container">
+        <div class="dashboard-header fade-in">
+            <div class="section-label">Student Dashboard</div>
+            <h1 class="h1">Welcome, {{ user.name or 'Student' }}!</h1>
+            <p class="text-muted" style="font-size: 1.0625rem;">Access semester-wise notes, question banks, and upcoming events.</p>
+        </div>
+
+        <div class="card fade-in" style="animation-delay: 0.05s; margin-bottom: 16px;">
+            <div class="meta-strip">
+                <span class="meta-chip meta-chip-blue">Semester: {{ user.semester or '-' }}</span>
+                <span class="meta-chip meta-chip-amber">Section: {{ user.section or '-' }}</span>
+                <span class="meta-chip meta-chip-green">Department: {{ user.department or '-' }}</span>
+            </div>
+        </div>
+
+        <div class="dashboard-grid fade-in" style="animation-delay: 0.1s;">
+            <div class="stat-card stat-card-click" data-target="notes-section">
+                <div class="stat-icon">📝</div>
+                <div class="stat-value">{{ notes|length if notes else 0 }}</div>
+                <div class="stat-label">Notes Available</div>
+            </div>
+            <div class="stat-card stat-card-click" data-target="qb-section">
+                <div class="stat-icon">📚</div>
+                <div class="stat-value">{{ question_banks|length if question_banks else 0 }}</div>
+                <div class="stat-label">Question Banks</div>
+            </div>
+            <div class="stat-card stat-card-click" data-target="events-section">
+                <div class="stat-icon">📅</div>
+                <div class="stat-value">{{ events|length if events else 0 }}</div>
+                <div class="stat-label">Upcoming Events</div>
+            </div>
+            <div class="stat-card stat-card-click" data-target="digital-campus-section">
+                <div class="stat-icon">🏫</div>
+                <div class="stat-value">1</div>
+                <div class="stat-label">Digital Campus</div>
+            </div>
+        </div>
+
+        <div class="card fade-in mt-4" id="digital-campus-section" style="animation-delay: 0.14s;">
+            <div class="section-label">Digital Campus</div>
+            <div style="display:flex; gap: 12px; flex-wrap: wrap; align-items: center; justify-content: space-between;">
+                <p class="text-muted" style="margin: 0;">Open timetable and calendar for your class schedule.</p>
+                <a href="/digital-campus" class="btn btn-primary" style="padding: 12px 20px;">Open Digital Campus</a>
+            </div>
+        </div>
+
+        <div class="section-label mt-4 fade-in" id="notes-section" style="animation-delay: 0.2s;">Study Materials</div>
+        <div class="card fade-in" style="animation-delay: 0.24s;">
+            <div class="toolbar">
+                <h2 class="h3" style="margin: 0; color: var(--green-primary);">Notes</h2>
+                <input id="notes-search" type="text" class="form-input" placeholder="Search notes by title or subject..." style="max-width: 360px;" oninput="filterResourceCards('notes-search', '#notes-grid .resource-card', 'notes-visible-count')">
+                <span class="badge" id="notes-visible-count" style="background: var(--green-bg); color: var(--green-primary);">Showing {{ notes|length if notes else 0 }} / {{ notes|length if notes else 0 }}</span>
+            </div>
+
+            {% if notes %}
+            <div class="resource-grid" id="notes-grid">
+                {% for note in notes %}
+                <div class="resource-card" data-search="{{ (note.title ~ ' ' ~ (note.subject or ''))|lower }}">
+                    <h4 class="h4" style="margin-bottom: 8px;">{{ note.title }}</h4>
+                    <p class="text-muted" style="font-size: 0.88rem; margin-bottom: 12px;">{{ note.subject or '-' }}</p>
+                    <a href="/uploads/{{ note.file_path }}" class="btn btn-outline" style="padding: 8px 14px; font-size: 0.82rem;" download>Download</a>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <div class="empty-logo">
+                    <img src="{{ url_for('static', filename='logo.jpeg') }}" alt="Gopalan College Logo">
+                </div>
+                <p class="text-muted empty-text">No notes available yet.</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="section-label mt-4 fade-in" id="qb-section" style="animation-delay: 0.3s;">Question Banks</div>
+        <div class="card fade-in" style="animation-delay: 0.34s;">
+            <div class="toolbar">
+                <h2 class="h3" style="margin: 0; color: var(--green-primary);">Question Bank Files</h2>
+                <input id="qb-search" type="text" class="form-input" placeholder="Search by title or subject..." style="max-width: 360px;" oninput="filterResourceCards('qb-search', '#qb-grid .resource-card', 'qb-visible-count')">
+                <span class="badge" id="qb-visible-count" style="background: var(--green-bg); color: var(--green-primary);">Showing {{ question_banks|length if question_banks else 0 }} / {{ question_banks|length if question_banks else 0 }}</span>
+            </div>
+
+            {% if question_banks %}
+            <div class="resource-grid" id="qb-grid">
+                {% for qb in question_banks %}
+                <div class="resource-card" data-search="{{ (qb.title ~ ' ' ~ (qb.subject or ''))|lower }}">
+                    <h4 class="h4" style="margin-bottom: 8px;">{{ qb.title }}</h4>
+                    <p class="text-muted" style="font-size: 0.88rem; margin-bottom: 12px;">{{ qb.subject or '-' }}</p>
+                    <a href="/uploads/{{ qb.file_path }}" class="btn btn-outline" style="padding: 8px 14px; font-size: 0.82rem;" download>Download</a>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <div class="empty-logo">
+                    <img src="{{ url_for('static', filename='logo.jpeg') }}" alt="Gopalan College Logo">
+                </div>
+                <p class="text-muted empty-text">No question banks available yet.</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="section-label mt-4 fade-in" id="events-section" style="animation-delay: 0.4s;">Upcoming Events</div>
+        <div class="card fade-in" style="animation-delay: 0.44s;">
+            {% if events %}
+            <div class="event-list">
+                {% for ev in events[:10] %}
+                <div class="event-item">
+                    <div class="event-item-top">
+                        <span class="badge" style="background: var(--cream-dark); color: var(--brown);">{{ (ev.type or 'event')|upper }}</span>
+                        <span class="event-date">{{ ev.event_date }}</span>
+                    </div>
+                    <div class="event-title">{{ ev.title }}</div>
+                    {% if ev.description %}
+                    <div class="event-desc">{{ ev.description }}</div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <div class="empty-logo">
+                    <img src="{{ url_for('static', filename='logo.jpeg') }}" alt="Gopalan College Logo">
+                </div>
+                <p class="text-muted empty-text">No upcoming events right now.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block head %}
+{{ super() }}
+<style>
+    .meta-strip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .meta-chip {
+        display: inline-flex;
+        align-items: center;
+        padding: 7px 12px;
+        border-radius: 999px;
+        font-size: 0.82rem;
+        font-weight: 700;
+    }
+
+    .meta-chip-green { background: var(--green-bg); color: var(--green-primary); }
+    .meta-chip-blue { background: var(--cream-dark); color: var(--brown); }
+    .meta-chip-amber { background: var(--orange-light); color: var(--brown); }
+
+    .stat-card-click {
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .stat-card-click:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--hover-shadow);
+    }
+
+    .toolbar {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: 14px;
+    }
+
+    .resource-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 14px;
+    }
+
+    .resource-card {
+        border: 1px solid var(--glass-card-border);
+        border-radius: 12px;
+        padding: 16px;
+        background: var(--glass-card-bg);
+        box-shadow: var(--glass-card-shadow);
+        backdrop-filter: blur(var(--glass-blur));
+        -webkit-backdrop-filter: blur(var(--glass-blur));
+    }
+
+    .resource-card:hover {
+        border-color: var(--green-primary);
+        transform: translateY(-2px);
+        transition: 0.2s ease;
+    }
+
+    .event-list {
+        display: grid;
+        gap: 10px;
+    }
+
+    .event-item {
+        border: 1px solid var(--glass-card-border);
+        border-radius: 12px;
+        padding: 12px;
+        background: var(--glass-card-bg);
+        box-shadow: var(--glass-card-shadow);
+        backdrop-filter: blur(var(--glass-blur));
+        -webkit-backdrop-filter: blur(var(--glass-blur));
+    }
+
+    .event-item-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 6px;
+    }
+
+    .event-date {
+        font-size: 0.85rem;
+        color: var(--brown-light);
+        font-weight: 600;
+    }
+
+    .event-title {
+        font-weight: 700;
+        color: var(--brown);
+        margin-bottom: 4px;
+    }
+
+    .event-desc {
+        font-size: 0.9rem;
+        color: var(--brown-light);
+        line-height: 1.4;
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function scrollToSection(id) {
+        const target = document.getElementById(id);
+        if (!target) return;
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function filterResourceCards(inputId, cardSelector, countId) {
+        const input = document.getElementById(inputId);
+        const query = ((input && input.value) || '').trim().toLowerCase();
+        const cards = Array.from(document.querySelectorAll(cardSelector));
+        let visible = 0;
+
+        cards.forEach((card) => {
+            const hay = (card.dataset.search || '').toLowerCase();
+            const show = !query || hay.includes(query);
+            card.style.display = show ? '' : 'none';
+            if (show) visible += 1;
+        });
+
+        const countEl = document.getElementById(countId);
+        if (countEl) {
+            countEl.textContent = `Showing ${visible} / ${cards.length}`;
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.stat-card-click[data-target]').forEach((card) => {
+            card.addEventListener('click', () => {
+                const target = card.getAttribute('data-target');
+                if (target) scrollToSection(target);
+            });
+        });
+    });
+</script>
+{% endblock %}

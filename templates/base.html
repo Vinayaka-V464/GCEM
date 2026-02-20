@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Paper Generator{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+  <script>
+    (function () {
+      try {
+        var savedTheme = localStorage.getItem('pg_theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'light');
+      }
+    })();
+  </script>
+
+  <!-- Google Fonts - Starlight Camp Style -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600;9..144,700;9..144,800&display=swap"
+    rel="stylesheet">
+
+  <!-- Main Styles -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+  {% block head %}{% endblock %}
+</head>
+
+<body class="{% if not show_navbar %}auth-mode{% endif %}">
+  <!-- Background with College Image -->
+  <div class="bg-wrapper"></div>
+
+  {% if show_navbar %}
+  <nav class="navbar">
+    <div class="container navbar-inner">
+      <a href="/" class="navbar-brand">
+        <img src="{{ url_for('static', filename='logo.jpeg') }}" alt="Gopalan College Logo"
+          style="height: 40px; margin-right: 12px; border-radius: 4px;">
+        Paper Generator
+      </a>
+      <ul class="navbar-nav">
+        {% if current_user %}
+        <li><a href="/dashboard" class="nav-link">Dashboard</a></li>
+        {% if current_user.role in ['teacher', 'faculty'] %}
+        <li><a href="/generate" class="nav-link">Generate</a></li>
+        <li><a href="/my-papers" class="nav-link">My Papers</a></li>
+        {% if current_user.subjects %}
+        <li>
+          <span class="nav-link" style="cursor: default;">
+            Subjects:
+            {% for s in current_user.subjects %}
+              {{ s.subject_code }} (Sem {{ s.semester }}){% if not loop.last %}, {% endif %}
+            {% endfor %}
+          </span>
+        </li>
+        {% endif %}
+        {% elif current_user.role == 'hod' %}
+        <li><a href="/hod/academics" class="nav-link">HOD Academics</a></li>
+        <li><a href="/hod/my-papers" class="nav-link">My Papers</a></li>
+        {% endif %}
+        <li>
+          <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle theme" aria-pressed="false">
+            <span class="theme-toggle-track">
+              <span class="theme-toggle-knob"></span>
+            </span>
+            <span class="theme-toggle-text">Light</span>
+          </button>
+        </li>
+        <li><a href="/logout" class="btn btn-outline" style="padding: 10px 20px;">Logout</a></li>
+        {% else %}
+        <li><a href="/login" class="nav-link">Login</a></li>
+        <li>
+          <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle theme" aria-pressed="false">
+            <span class="theme-toggle-track">
+              <span class="theme-toggle-knob"></span>
+            </span>
+            <span class="theme-toggle-text">Light</span>
+          </button>
+        </li>
+        <li><a href="/signup" class="btn btn-primary" style="padding: 10px 20px;">Sign Up</a></li>
+        {% endif %}
+      </ul>
+    </div>
+  </nav>
+  {% endif %}
+
+  {% if not show_navbar %}
+  <button type="button" class="theme-toggle theme-toggle-float" data-theme-toggle aria-label="Toggle theme" aria-pressed="false">
+    <span class="theme-toggle-track">
+      <span class="theme-toggle-knob"></span>
+    </span>
+    <span class="theme-toggle-text">Light</span>
+  </button>
+  {% endif %}
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  <div class="container" style="padding-top: {% if show_navbar %}100px{% else %}20px{% endif %}">
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category }}">{{ message }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endwith %}
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+  <script src="{{ url_for('static', filename='js/firebase-auth.js') }}"></script>
+  <script>
+    (function () {
+      var STORAGE_KEY = 'pg_theme';
+      var SCROLL_PREFIX = 'pg_scroll::';
+
+      function scrollKey() {
+        return SCROLL_PREFIX + window.location.pathname + window.location.search;
+      }
+
+      function currentTheme() {
+        return document.documentElement.getAttribute('data-theme') || 'light';
+      }
+
+      function applyTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        try {
+          localStorage.setItem(STORAGE_KEY, theme);
+        } catch (e) {}
+        var isDark = theme === 'dark';
+        var toggleButtons = document.querySelectorAll('[data-theme-toggle]');
+        toggleButtons.forEach(function (btn) {
+          btn.setAttribute('aria-pressed', isDark ? 'true' : 'false');
+          var label = btn.querySelector('.theme-toggle-text');
+          if (label) label.textContent = isDark ? 'Dark' : 'Light';
+        });
+      }
+
+      document.addEventListener('DOMContentLoaded', function () {
+        if ('scrollRestoration' in history) {
+          history.scrollRestoration = 'manual';
+        }
+
+        try {
+          var savedY = sessionStorage.getItem(scrollKey());
+          if (savedY !== null) {
+            window.scrollTo(0, parseInt(savedY, 10) || 0);
+            sessionStorage.removeItem(scrollKey());
+          }
+        } catch (e) {}
+
+        applyTheme(currentTheme());
+        var toggleButtons = document.querySelectorAll('[data-theme-toggle]');
+        toggleButtons.forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var next = currentTheme() === 'dark' ? 'light' : 'dark';
+            applyTheme(next);
+          });
+        });
+
+        document.querySelectorAll('form').forEach(function (form) {
+          form.addEventListener('submit', function () {
+            try {
+              sessionStorage.setItem(scrollKey(), String(window.scrollY || window.pageYOffset || 0));
+            } catch (e) {}
+          });
+        });
+      });
+
+      function persistScroll() {
+        try {
+          sessionStorage.setItem(scrollKey(), String(window.scrollY || window.pageYOffset || 0));
+        } catch (e) {}
+      }
+
+      window.addEventListener('beforeunload', persistScroll);
+      window.addEventListener('pagehide', persistScroll);
+    })();
+  </script>
+
+  {% block scripts %}{% endblock %}
+</body>
+
+</html>

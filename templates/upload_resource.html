@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Resource - Paper Generator{% endblock %}
+
+{% set show_navbar = true %}
+
+{% block content %}
+<div class="dashboard">
+    <div class="container">
+        <div class="dashboard-header fade-in">
+            <div class="section-label">Upload</div>
+            <h1 class="h1">Upload {{ 'Question Bank' if resource_type == 'qb' else 'Notes' }}</h1>
+            <p class="text-muted" style="font-size: 1.125rem;">Share materials with students</p>
+        </div>
+
+        <div class="card fade-in" style="animation-delay: 0.1s; max-width: 600px; margin: 0 auto;">
+            <form action="/api/upload/resource" method="post" enctype="multipart/form-data">
+                <input type="hidden" name="resource_type" value="{{ resource_type }}">
+
+                <div class="form-group">
+                    <label class="form-label">Title</label>
+                    <input type="text" class="form-input" name="title" placeholder="e.g. Unit 1 Notes" required>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Subject</label>
+                    {% if subjects %}
+                    <select class="form-input" id="subject-select" required>
+                        <option value="">Select subject</option>
+                        {% for s in subjects %}
+                        <option value="{{ s.subject_code }}|{{ s.subject_name }}|{{ s.semester }}">
+                            {{ s.subject_code }} - {{ s.subject_name }} (Sem {{ s.semester }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <input type="hidden" name="subject" id="subject-input">
+                    <input type="hidden" name="subject_code" id="subject-code-input">
+                    <input type="hidden" name="semester" id="semester-input">
+                    {% else %}
+                    <input type="text" class="form-input" name="subject" placeholder="No subjects assigned" readonly>
+                    {% endif %}
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Department</label>
+                    <input type="text" class="form-input" name="department" value="{{ current_user.department }}"
+                        readonly style="background: #f9fafb;">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">File (PDF)</label>
+                    <div class="step-card" style="padding: 20px; text-align: center; cursor: pointer;">
+                        <input type="file" name="file" accept=".pdf" required style="width: 100%;">
+                        <p class="text-muted" style="font-size: 0.8125rem; margin-top: 8px;">Upload PDF file</p>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <button type="submit" class="btn btn-primary btn-block">Upload {{ 'Question Bank' if resource_type
+                        == 'qb' else 'Notes' }}</button>
+                    <a href="{% if current_user.role == 'hod' %}/hod/academics{% else %}/teacher/dashboard{% endif %}" class="btn btn-outline btn-block mt-2">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        const subjectSelect = document.getElementById('subject-select');
+        if (!subjectSelect) return;
+        const subjectInput = document.getElementById('subject-input');
+        const codeInput = document.getElementById('subject-code-input');
+        const semInput = document.getElementById('semester-input');
+
+        const applySelection = () => {
+            const val = subjectSelect.value || '';
+            const parts = val.split('|');
+            if (parts.length >= 3) {
+                codeInput.value = parts[0];
+                const name = parts[1];
+                const sem = parts[2];
+                semInput.value = sem;
+                subjectInput.value = `${parts[0]} - ${name} (Sem ${sem})`;
+            } else {
+                subjectInput.value = '';
+                codeInput.value = '';
+                semInput.value = '';
+            }
+        };
+
+        subjectSelect.addEventListener('change', applySelection);
+        if (subjectSelect.options.length === 2 && subjectSelect.value === '') {
+            subjectSelect.selectedIndex = 1;
+            applySelection();
+        }
+    })();
+</script>
+{% endblock %}

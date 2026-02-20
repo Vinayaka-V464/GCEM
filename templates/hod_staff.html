@@ -1,0 +1,378 @@
+{% extends "base.html" %}
+
+{% block title %}Staff Management - Paper Generator{% endblock %}
+
+{% set show_navbar = true %}
+
+{% block content %}
+<div class="dashboard">
+    <div class="container">
+        <div class="dashboard-header fade-in">
+            <div class="section-label">Staff Management</div>
+            <h1 class="h1">Teacher Approvals & Subjects</h1>
+            <p class="text-muted" style="font-size: 1.125rem;">Approve teachers and manage their subjects</p>
+        </div>
+
+        <div class="card fade-in mb-4" style="animation-delay: 0.05s;">
+            <div class="section-label">Master Data</div>
+            <h3 class="h4 mb-2" style="color: var(--green-primary);">Semesters, Sections & Subjects</h3>
+
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px;">
+                <div class="card" style="padding:14px; border:1px solid #E2E8F0;">
+                    <div class="section-label">Add Section</div>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr auto; gap:8px; align-items:end;">
+                        <input type="number" class="form-input" id="new-section-sem" placeholder="Semester">
+                        <input type="number" class="form-input" id="new-section-count" placeholder="How many sections">
+                        <button class="btn btn-secondary btn-sm" onclick="autoCreateSections()">Auto Create</button>
+                    </div>
+                    <p class="text-muted" style="font-size: 0.8rem; margin: 8px 0 0;">Example: Semester `6`, count `2` creates `6A`, `6B`.</p>
+                    <div class="mt-2" style="max-height: 180px; overflow-y:auto;">
+                        {% if section_catalog %}
+                            {% for sec in section_catalog %}
+                            <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #F1F5F9;">
+                                <span>Sem {{ sec.semester }} - Section {{ sec.section }}</span>
+                                <button class="btn btn-outline btn-sm" onclick="removeSectionCatalog('{{ sec.id }}')">Remove</button>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="text-muted">No sections yet</div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="card" style="padding:14px; border:1px solid #E2E8F0;">
+                    <div class="section-label">Add Subject</div>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr 1fr auto; gap:8px; align-items:end;">
+                        <input type="number" class="form-input" id="new-sub-sem" placeholder="Semester">
+                        <input type="text" class="form-input" id="new-sub-code" placeholder="Code (BCS601)">
+                        <input type="text" class="form-input" id="new-sub-name" placeholder="Subject Name">
+                        <button class="btn btn-secondary btn-sm" onclick="addSubjectCatalog()">Add</button>
+                    </div>
+                    <div class="mt-2" style="max-height: 180px; overflow-y:auto;">
+                        {% if subject_catalog %}
+                            {% for sub in subject_catalog %}
+                            <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #F1F5F9;">
+                                <span>{{ sub.subject_code }} - {{ sub.subject_name }} (Sem {{ sub.semester }})</span>
+                                <button class="btn btn-outline btn-sm" onclick="removeSubjectCatalog('{{ sub.id }}')">Remove</button>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="text-muted">No subjects yet</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card fade-in mb-4" style="animation-delay: 0.08s;">
+            <div class="section-label">Staff Actions</div>
+            <h3 class="h4 mb-2" style="color: var(--green-primary);">Add Staff / Replace Teacher</h3>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px;">
+                <div class="card" style="padding:14px; border:1px solid #E2E8F0;">
+                    <div class="section-label">Add Staff Directly</div>
+                    <div class="form-group">
+                        <input type="text" class="form-input" id="new-staff-name" placeholder="Staff Name">
+                    </div>
+                    <div class="form-group">
+                        <input type="email" class="form-input" id="new-staff-email" placeholder="Staff Email">
+                    </div>
+                    <div class="form-group">
+                        <input type="text" class="form-input" id="new-staff-phone" placeholder="Phone Number">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Subjects</label>
+                        <div id="new-staff-subjects" style="max-height: 120px; overflow-y:auto; border:1px solid #E2E8F0; border-radius:8px; padding:8px;">
+                            {% for sub in subject_catalog %}
+                            <label style="display:block; font-size:0.9rem; margin-bottom:4px;">
+                                <input type="checkbox" class="new-staff-subject" value="{{ sub.id }}">
+                                {{ sub.subject_code }} - {{ sub.subject_name }} (Sem {{ sub.semester }})
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Sections</label>
+                        <div id="new-staff-sections" style="max-height: 120px; overflow-y:auto; border:1px solid #E2E8F0; border-radius:8px; padding:8px;">
+                            {% for sec in section_catalog %}
+                            <label style="display:block; font-size:0.9rem; margin-bottom:4px;">
+                                <input type="checkbox" class="new-staff-section" value="{{ sec.id }}">
+                                Sem {{ sec.semester }} - {{ sec.section }}
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-sm" onclick="addStaffDirectly()">Add + Approve Staff</button>
+                </div>
+
+                <div class="card" style="padding:14px; border:1px solid #E2E8F0;">
+                    <div class="section-label">Replace Teacher</div>
+                    <div class="form-group">
+                        <label class="form-label">Current Teacher</label>
+                        <select class="form-input" id="replace-from-teacher">
+                            <option value="">Select current teacher</option>
+                            {% for t in teachers %}
+                            <option value="{{ t.id }}">{{ t.name }} ({{ t.email }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">New Teacher</label>
+                        <select class="form-input" id="replace-to-teacher">
+                            <option value="">Select replacement teacher</option>
+                            {% for t in teachers %}
+                            <option value="{{ t.id }}">{{ t.name }} ({{ t.email }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <p class="text-muted" style="font-size:0.85rem;">Moves all subject and section assignments from current teacher to new teacher.</p>
+                    <button class="btn btn-secondary btn-sm" onclick="replaceTeacherAssignments()">Replace Assignments</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card fade-in" style="animation-delay: 0.1s;">
+            {% if teachers %}
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+                {% for t in teachers %}
+                <div class="card" style="padding: 16px; border: 1px solid #E2E8F0;">
+                    <div style="display:flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <div>
+                            <div style="font-weight: 700;">{{ t.name }} <span class="text-muted"
+                                    style="font-weight: 500;">({{ t.email }})</span></div>
+                            <div class="text-muted" style="font-size: 0.875rem;">Phone: {{ t.phone or '-' }}</div>
+                        </div>
+                        <div>
+                            {% if t.profile_complete and t.approved_by_hod %}
+                            <span class="badge" style="background: var(--green-bg); color: var(--green-primary);">Approved</span>
+                            {% elif t.profile_complete %}
+                            <span class="badge" style="background: #FEF3C7; color: #D97706;">Pending Approval</span>
+                            {% else %}
+                            <span class="badge" style="background: #F3F4F6; color: #6B7280;">Profile Incomplete</span>
+                            {% endif %}
+                        </div>
+                        <div style="display:flex; gap: 8px;">
+                            {% if t.profile_complete and not t.approved_by_hod %}
+                            <button class="btn btn-primary btn-sm" onclick="approveTeacher('{{ t.id }}')">Approve</button>
+                            {% endif %}
+                            {% if t.approved_by_hod %}
+                            <button class="btn btn-outline btn-sm" onclick="revokeTeacher('{{ t.id }}')">Revoke</button>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="mt-3">
+                        <div class="section-label">Subjects</div>
+                        {% if t.subjects %}
+                        <ul style="margin: 0; padding-left: 18px;">
+                            {% for s in t.subjects %}
+                            <li style="margin: 6px 0;">
+                                {{ s.subject_code }} - {{ s.subject_name }} (Sem {{ s.semester }})
+                                <button class="btn btn-outline btn-sm" style="margin-left: 8px;"
+                                    onclick="removeSubject('{{ s.id }}')">Remove</button>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                        {% else %}
+                        <div class="text-muted">No subjects assigned</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mt-3">
+                        <div class="section-label">Sections</div>
+                        {% if t.sections %}
+                        <ul style="margin: 0; padding-left: 18px;">
+                            {% for sec in t.sections %}
+                            <li style="margin: 6px 0;">
+                                Sem {{ sec.semester }} - {{ sec.section }}
+                                <button class="btn btn-outline btn-sm" style="margin-left: 8px;"
+                                    onclick="removeTeacherSection('{{ sec.id }}')">Remove</button>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                        {% else %}
+                        <div class="text-muted">No sections assigned</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mt-3" style="border-top: 1px solid #E2E8F0; padding-top: 12px;">
+                        <div class="section-label">Add Subject</div>
+                        <div style="display:grid; grid-template-columns: 1fr auto; gap: 10px; align-items:center;">
+                            <select class="form-input" id="catalog-sub-{{ t.id }}">
+                                <option value="">Select subject from catalog</option>
+                                {% for sub in subject_catalog %}
+                                <option value="{{ sub.id }}">{{ sub.subject_code }} - {{ sub.subject_name }} (Sem {{ sub.semester }})</option>
+                                {% endfor %}
+                            </select>
+                            <button class="btn btn-secondary btn-sm" onclick="addSubject('{{ t.id }}')">Add</button>
+                        </div>
+                    </div>
+
+                    <div class="mt-3" style="border-top: 1px solid #E2E8F0; padding-top: 12px;">
+                        <div class="section-label">Add Section</div>
+                        <div style="display:grid; grid-template-columns: 1fr auto; gap: 10px; align-items:center;">
+                            <select class="form-input" id="catalog-section-{{ t.id }}">
+                                <option value="">Select section from catalog</option>
+                                {% for sec in section_catalog %}
+                                <option value="{{ sec.id }}">Sem {{ sec.semester }} - {{ sec.section }}</option>
+                                {% endfor %}
+                            </select>
+                            <button class="btn btn-secondary btn-sm" onclick="addSectionToTeacher('{{ t.id }}')">Add</button>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div style="text-align: center; padding: 40px 20px;">
+                <h3 class="h4">No teachers found</h3>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function autoCreateSections() {
+        const semester = document.getElementById('new-section-sem').value.trim();
+        const count = document.getElementById('new-section-count').value.trim();
+        if (!semester || !count) {
+            alert('Semester and section count are required');
+            return;
+        }
+        const resp = await fetch('/api/hod/catalog/sections/auto', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ semester, count })
+        });
+        const result = await resp.json();
+        if (result.success) location.reload();
+        else alert(result.message || 'Failed to create sections');
+    }
+    async function removeSectionCatalog(id) {
+        const resp = await fetch(`/api/hod/catalog/sections/${id}/remove`, { method: 'POST' });
+        const result = await resp.json();
+        if (result.success) location.reload();
+        else alert(result.message || 'Failed to remove section');
+    }
+    async function addSubjectCatalog() {
+        const semester = document.getElementById('new-sub-sem').value.trim();
+        const subject_code = document.getElementById('new-sub-code').value.trim();
+        const subject_name = document.getElementById('new-sub-name').value.trim();
+        if (!semester || !subject_code || !subject_name) {
+            alert('Semester, code and name are required');
+            return;
+        }
+        const resp = await fetch('/api/hod/catalog/subjects', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ semester, subject_code, subject_name })
+        });
+        const result = await resp.json();
+        if (result.success) location.reload();
+        else alert(result.message || 'Failed to add subject');
+    }
+    async function removeSubjectCatalog(id) {
+        const resp = await fetch(`/api/hod/catalog/subjects/${id}/remove`, { method: 'POST' });
+        const result = await resp.json();
+        if (result.success) location.reload();
+        else alert(result.message || 'Failed to remove subject');
+    }
+
+    async function approveTeacher(id) {
+        const resp = await fetch(`/api/hod/approve-teacher/${id}`, { method: 'POST' });
+        const result = await resp.json();
+        if (result.success) location.reload();
+        else alert('Failed to approve');
+    }
+    async function revokeTeacher(id) {
+        const resp = await fetch(`/api/hod/revoke-teacher/${id}`, { method: 'POST' });
+        const result = await resp.json();
+        if (result.success) location.reload();
+        else alert('Failed to revoke');
+    }
+    async function addSubject(id) {
+        const catalogSubjectId = document.getElementById(`catalog-sub-${id}`).value;
+        if (!catalogSubjectId) {
+            alert('Please select a subject from catalog');
+            return;
+        }
+        const resp = await fetch(`/api/hod/teacher/${id}/subjects`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ catalog_subject_id: catalogSubjectId })
+        });
+        const result = await resp.json();
+        if (result.success) location.reload();
+        else alert(result.message || 'Failed to add subject');
+    }
+    async function addSectionToTeacher(id) {
+        const catalogSectionId = document.getElementById(`catalog-section-${id}`).value;
+        if (!catalogSectionId) {
+            alert('Please select a section from catalog');
+            return;
+        }
+        const resp = await fetch(`/api/hod/teacher/${id}/sections`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ catalog_section_id: catalogSectionId })
+        });
+        const result = await resp.json();
+        if (result.success) location.reload();
+        else alert(result.message || 'Failed to add section');
+    }
+    async function removeSubject(subjectId) {
+        const resp = await fetch(`/api/hod/teacher/subjects/${subjectId}/remove`, { method: 'POST' });
+        const result = await resp.json();
+        if (result.success) location.reload();
+        else alert('Failed to remove subject');
+    }
+    async function removeTeacherSection(sectionId) {
+        const resp = await fetch(`/api/hod/teacher/sections/${sectionId}/remove`, { method: 'POST' });
+        const result = await resp.json();
+        if (result.success) location.reload();
+        else alert(result.message || 'Failed to remove section');
+    }
+    async function replaceTeacherAssignments() {
+        const from_teacher_id = document.getElementById('replace-from-teacher').value;
+        const to_teacher_id = document.getElementById('replace-to-teacher').value;
+        if (!from_teacher_id || !to_teacher_id) {
+            alert('Please select both current and replacement teacher');
+            return;
+        }
+        if (!confirm('Move all subjects and sections from current teacher to replacement teacher?')) return;
+        const resp = await fetch('/api/hod/teacher/replace', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ from_teacher_id, to_teacher_id })
+        });
+        const result = await resp.json();
+        if (result.success) location.reload();
+        else alert(result.message || 'Failed to replace teacher assignments');
+    }
+    async function addStaffDirectly() {
+        const name = document.getElementById('new-staff-name').value.trim();
+        const email = document.getElementById('new-staff-email').value.trim();
+        const phone = document.getElementById('new-staff-phone').value.trim();
+        const subject_ids = Array.from(document.querySelectorAll('.new-staff-subject:checked')).map(x => x.value);
+        const section_ids = Array.from(document.querySelectorAll('.new-staff-section:checked')).map(x => x.value);
+        if (!name || !email || !phone) {
+            alert('Name, email and phone are required');
+            return;
+        }
+        const resp = await fetch('/api/hod/staff/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, email, phone, subject_ids, section_ids })
+        });
+        const result = await resp.json();
+        if (result.success) {
+            alert(result.message || 'Staff added');
+            location.reload();
+        } else {
+            alert(result.message || 'Failed to add staff');
+        }
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+
+{% block title %}Review Paper - Paper Generator{% endblock %}
+
+{% set show_navbar = true %}
+
+{% block content %}
+<div class="dashboard">
+    <div class="container">
+        <div class="dashboard-header fade-in">
+            <div class="section-label">Paper Review</div>
+            <h1 class="h1">{{ paper.title or paper.course_code }}</h1>
+            <p class="text-muted" style="font-size: 1.125rem;">Review and approve this question paper</p>
+        </div>
+
+        <!-- Paper Details -->
+        <div class="card fade-in" style="animation-delay: 0.1s;">
+            <div class="section-label">Paper Details</div>
+
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; margin-bottom: 24px;">
+                <div>
+                    <p class="text-muted" style="font-size: 0.875rem; margin-bottom: 4px;">Course Code</p>
+                    <p style="font-weight: 500;">{{ paper.course_code }}</p>
+                </div>
+                <div>
+                    <p class="text-muted" style="font-size: 0.875rem; margin-bottom: 4px;">Course Name</p>
+                    <p style="font-weight: 500;">{{ paper.course_name }}</p>
+                </div>
+                <div>
+                    <p class="text-muted" style="font-size: 0.875rem; margin-bottom: 4px;">Department</p>
+                    <p style="font-weight: 500;">{{ paper.department }}</p>
+                </div>
+                <div>
+                    <p class="text-muted" style="font-size: 0.875rem; margin-bottom: 4px;">Submitted At</p>
+                    <p style="font-weight: 500;">{{ paper.submitted_at }}</p>
+                </div>
+            </div>
+
+            {% if paper.teacher_signature %}
+            <div style="margin-bottom: 24px;">
+                <p class="text-muted" style="font-size: 0.875rem; margin-bottom: 8px;">Teacher Signature</p>
+                <img src="/uploads/{{ paper.teacher_signature }}" alt="Teacher Signature"
+                    style="max-height: 80px; border: 1px solid #ddd; border-radius: 8px; padding: 8px; background: white;">
+            </div>
+            {% endif %}
+
+            {% if paper.pdf_path %}
+            <div style="margin-bottom: 16px;">
+                <a href="/paper/{{ paper.id }}" class="btn btn-outline" target="_blank">
+                    👁️ View Paper
+                </a>
+                <a href="/uploads/{{ paper.pdf_path }}" class="btn btn-outline" target="_blank">
+                    📄 Open PDF in New Tab
+                </a>
+                <a href="/uploads/{{ paper.pdf_path }}" class="btn btn-secondary ml-2" download>
+                    ⬇️ Download PDF
+                </a>
+            </div>
+
+            <!-- Embedded PDF Preview -->
+            <div class="section-label mt-4">Full Paper Preview</div>
+            <div
+                style="border: 2px solid var(--green-primary); border-radius: 12px; overflow: hidden; margin-top: 12px;">
+                <iframe src="/uploads/{{ paper.pdf_path }}" style="width: 100%; height: 800px; border: none;"
+                    title="Paper Preview">
+                </iframe>
+            </div>
+            {% else %}
+            <div class="mt-2">
+                <a href="/paper/{{ paper.id }}" class="btn btn-secondary">View Paper</a>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Approval Actions -->
+        <div class="card fade-in mt-4" style="animation-delay: 0.2s;">
+            <div class="section-label">Your Decision</div>
+            <h3 class="h4 mb-3" style="color: var(--green-primary);">Approve or Reject this Paper</h3>
+
+            {% if current_user.signature_path and current_user.principal_signature_path %}
+            <div style="margin-bottom: 24px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px;">
+                <div>
+                    <p class="text-muted mb-2">HOD signature will be added:</p>
+                    <img src="/uploads/{{ current_user.signature_path }}" alt="HOD Signature"
+                        style="max-height: 60px; border: 1px solid #ddd; border-radius: 8px; padding: 8px; background: white;">
+                </div>
+                <div>
+                    <p class="text-muted mb-2">Principal signature will be added:</p>
+                    <img src="/uploads/{{ current_user.principal_signature_path }}" alt="Principal Signature"
+                        style="max-height: 60px; border: 1px solid #ddd; border-radius: 8px; padding: 8px; background: white;">
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+                <button class="btn btn-primary btn-lg" onclick="approvePaper()" id="approve-btn">
+                    ✅ Approve Paper
+                </button>
+                <button class="btn btn-outline btn-lg" onclick="showRejectForm()"
+                    style="border-color: #DC2626; color: #DC2626;">
+                    ❌ Reject Paper
+                </button>
+            </div>
+
+            <!-- Reject Form (hidden by default) -->
+            <div id="reject-form" class="hidden mt-4">
+                <div class="form-group">
+                    <label class="form-label">Rejection Comments</label>
+                    <textarea class="form-input" id="rejection-comments" rows="4"
+                        placeholder="Please provide feedback for the teacher..."></textarea>
+                </div>
+                <button class="btn" style="background: #DC2626; color: white;" onclick="rejectPaper()">
+                    Submit Rejection
+                </button>
+                <button class="btn btn-outline ml-2" onclick="hideRejectForm()">
+                    Cancel
+                </button>
+            </div>
+            {% else %}
+            <div class="alert alert-info">
+                ⚠️ Please upload both HOD and Principal signatures before approving papers.
+                <a href="/hod/dashboard" class="btn btn-secondary ml-2" style="padding: 8px 16px;">Go to Dashboard</a>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="mt-4">
+            <a href="/hod/dashboard" class="btn btn-outline">← Back to Dashboard</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function approvePaper() {
+        if (!confirm('Approve this paper? HOD and Principal signatures will be added.')) return;
+
+        const btn = document.getElementById('approve-btn');
+        btn.disabled = true;
+        btn.textContent = 'Approving...';
+
+        try {
+            const response = await fetch('/api/paper/{{ paper.id }}/approve', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                alert('Paper approved successfully!');
+                window.location.href = '/hod/dashboard';
+            } else {
+                alert(result.message || 'Approval failed');
+                btn.disabled = false;
+                btn.textContent = '✅ Approve Paper';
+            }
+        } catch (error) {
+            alert('Error approving paper');
+            btn.disabled = false;
+            btn.textContent = '✅ Approve Paper';
+        }
+    }
+
+    function showRejectForm() {
+        document.getElementById('reject-form').classList.remove('hidden');
+    }
+
+    function hideRejectForm() {
+        document.getElementById('reject-form').classList.add('hidden');
+    }
+
+    async function rejectPaper() {
+        const comments = document.getElementById('rejection-comments').value.trim();
+        if (!comments) {
+            alert('Please provide rejection comments');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/paper/{{ paper.id }}/reject', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ comments })
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                alert('Paper rejected with feedback');
+                window.location.href = '/hod/dashboard';
+            } else {
+                alert(result.message || 'Rejection failed');
+            }
+        } catch (error) {
+            alert('Error rejecting paper');
+        }
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,375 @@
+{% extends "base.html" %}
+
+{% block title %}Teacher Dashboard - Paper Generator{% endblock %}
+
+{% set show_navbar = true %}
+
+{% block content %}
+<div class="dashboard">
+    <div class="container">
+        <div class="dashboard-header fade-in">
+            <div class="section-label">Teacher Dashboard</div>
+            <h1 class="h1">Welcome, {{ user.name or 'Teacher' }}!</h1>
+            <p class="text-muted" style="font-size: 1.0625rem;">Manage papers, resources, and class responsibilities.</p>
+        </div>
+
+        <div class="card fade-in" style="animation-delay: 0.05s; margin-bottom: 16px;">
+            <div class="meta-strip">
+                <span class="meta-chip meta-chip-green">Department: {{ user.department or '-' }}</span>
+                <span class="meta-chip meta-chip-blue">Assigned Subjects: {{ subjects|length if subjects else 0 }}</span>
+                <span class="meta-chip meta-chip-amber">Assigned Sections: {{ sections|length if sections else 0 }}</span>
+            </div>
+        </div>
+
+        <div class="dashboard-grid fade-in" style="animation-delay: 0.1s;">
+            <div class="stat-card stat-card-click" data-target="recent-papers-section" data-filter="all">
+                <div class="stat-icon">📄</div>
+                <div class="stat-value">{{ stats.papers_created or 0 }}</div>
+                <div class="stat-label">Papers Created</div>
+            </div>
+            <div class="stat-card stat-card-click" data-target="recent-papers-section" data-filter="approved">
+                <div class="stat-icon">✅</div>
+                <div class="stat-value">{{ stats.approved or 0 }}</div>
+                <div class="stat-label">Approved</div>
+            </div>
+            <div class="stat-card stat-card-click" data-target="recent-papers-section" data-filter="pending">
+                <div class="stat-icon">⏳</div>
+                <div class="stat-value">{{ stats.pending or 0 }}</div>
+                <div class="stat-label">Pending Approval</div>
+            </div>
+            <div class="stat-card stat-card-click" data-target="quick-actions-section">
+                <div class="stat-icon">📚</div>
+                <div class="stat-value">{{ stats.notes or 0 }}</div>
+                <div class="stat-label">Notes Uploaded</div>
+            </div>
+        </div>
+
+        <div class="dashboard-grid fade-in mt-4" style="animation-delay: 0.14s; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));">
+            <div class="card" style="margin: 0;">
+                <div class="section-label">Your Subjects</div>
+                <div class="chip-list">
+                    {% if subjects %}
+                        {% for s in subjects %}
+                        <span class="badge" style="background: var(--cream-dark); color: var(--brown);">{{ s.subject_code }} - {{ s.subject_name }} (Sem {{ s.semester }})</span>
+                        {% endfor %}
+                    {% else %}
+                        <span class="text-muted">No subjects assigned yet.</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card" style="margin: 0;">
+                <div class="section-label">Your Sections</div>
+                <div class="chip-list">
+                    {% if sections %}
+                        {% for sec in sections %}
+                        <span class="badge badge-info">Sem {{ sec.semester }} - {{ sec.section }}</span>
+                        {% endfor %}
+                    {% else %}
+                        <span class="text-muted">No sections assigned yet.</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="card fade-in mt-4" style="animation-delay: 0.2s;">
+            <div class="section-label">Signature</div>
+            <h3 class="h4 mb-3" style="color: var(--green-primary);">Upload your signature for paper submission</h3>
+
+            {% if user.signature_path %}
+            <div style="margin-bottom: 16px;">
+                <p class="text-muted mb-2">Current signature:</p>
+                <img src="/uploads/{{ user.signature_path }}" alt="Teacher Signature"
+                    style="max-height: 80px; border: 1px solid var(--glass-border); border-radius: 8px; padding: 8px; background: var(--glass-bg);">
+            </div>
+            {% endif %}
+
+            <form id="signature-form" enctype="multipart/form-data">
+                <div class="form-group" style="max-width: 420px; margin-bottom: 10px;">
+                    <input type="file" class="form-input" id="signature-file" name="signature" accept="image/*">
+                </div>
+                <button type="submit" class="btn btn-secondary">Upload Signature</button>
+            </form>
+        </div>
+
+        <div class="section-label mt-4 fade-in" id="quick-actions-section" style="animation-delay: 0.24s;">Quick Actions</div>
+        <div class="quick-actions fade-in" style="animation-delay: 0.28s;">
+            <a href="/digital-campus" class="action-card highlight">
+                <div class="action-card-icon">🏫</div>
+                <h3 class="h4">Digital Campus</h3>
+                <p>Timetable and calendar</p>
+            </a>
+            <a href="/generate" class="action-card">
+                <div class="action-card-icon">✨</div>
+                <h3 class="h4">Generate Paper</h3>
+                <p>Create a new question paper</p>
+            </a>
+            <a href="/my-papers" class="action-card">
+                <div class="action-card-icon">🗂️</div>
+                <h3 class="h4">My Papers</h3>
+                <p class="text-muted">View and submit papers</p>
+            </a>
+            <a href="/my-resources" class="action-card">
+                <div class="action-card-icon">📦</div>
+                <h3 class="h4">My Resources</h3>
+                <p class="text-muted">All uploaded notes and QBs</p>
+            </a>
+            <a href="/upload-notes" class="action-card">
+                <div class="action-card-icon">📝</div>
+                <h3 class="h4">Upload Notes</h3>
+                <p class="text-muted">Share with students</p>
+            </a>
+            <a href="/upload-qb" class="action-card">
+                <div class="action-card-icon">📚</div>
+                <h3 class="h4">Upload QB</h3>
+                <p class="text-muted">Add to question bank</p>
+            </a>
+        </div>
+
+        <div class="section-label mt-4 fade-in" id="recent-papers-section" style="animation-delay: 0.34s;">Recent Papers</div>
+        <div class="card fade-in" style="animation-delay: 0.38s;">
+            {% if papers %}
+            <div class="table-toolbar" style="margin-bottom: 12px;">
+                <input id="paper-search" type="text" class="form-input" placeholder="Search by title or course code..." oninput="filterTeacherPapers()" style="max-width: 340px;">
+                <select id="paper-status-filter" class="form-input" style="width: auto; min-width: 150px;" onchange="filterTeacherPapers()">
+                    <option value="all">All statuses</option>
+                    <option value="draft">Draft</option>
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                </select>
+                <span class="badge" id="visible-paper-count" style="background: var(--green-bg); color: var(--green-primary);">Showing {{ papers[:12]|length }} / {{ papers[:12]|length }}</span>
+            </div>
+
+            <div style="overflow-x:auto;">
+                <table class="table-clean">
+                    <thead>
+                        <tr>
+                            <th>Paper Title</th>
+                            <th>Course</th>
+                            <th>Status</th>
+                            <th style="text-align: right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="teacher-papers-body">
+                        {% for paper in papers[:12] %}
+                        <tr class="paper-row"
+                            data-status="{{ (paper.status or 'draft')|lower }}"
+                            data-search="{{ ((paper.title or 'untitled') ~ ' ' ~ (paper.course_code or ''))|lower }}">
+                            <td style="font-weight: 500;">{{ paper.title or 'Untitled' }}</td>
+                            <td>{{ paper.course_code or '-' }}</td>
+                            <td>
+                                {% if paper.status == 'approved' %}
+                                <span class="badge badge-green">Approved</span>
+                                {% elif paper.status == 'pending' %}
+                                <span class="badge badge-orange">Pending</span>
+                                {% elif paper.status == 'rejected' %}
+                                <span class="badge badge-danger">Rejected</span>
+                                {% else %}
+                                <span class="badge badge-neutral">Draft</span>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: right; white-space: nowrap;">
+                                <a href="/paper/{{ paper.id }}" class="btn btn-outline btn-sm" style="padding: 7px 12px; font-size: 0.78rem;">View</a>
+                                {% if paper.status == 'draft' %}
+                                <button class="btn btn-primary btn-sm" style="padding: 7px 12px; font-size: 0.78rem;" onclick="submitPaper({{ paper.id }})">Submit</button>
+                                {% elif paper.status == 'rejected' %}
+                                <button class="btn btn-outline btn-sm" style="padding: 7px 12px; font-size: 0.78rem;" onclick="viewComments({{ paper.id }}, '{{ (paper.rejection_comments or '')|replace("'", "&#39;") }}')">Comments</button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <div class="empty-logo">
+                    <img src="{{ url_for('static', filename='logo.jpeg') }}" alt="Gopalan College Logo">
+                </div>
+                <h3 class="h4 empty-title">No papers yet</h3>
+                <p class="text-muted empty-text">Create your first question paper.</p>
+                <a href="/generate" class="btn btn-primary">Generate Paper</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block head %}
+{{ super() }}
+<style>
+    .meta-strip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    .meta-chip {
+        display: inline-flex;
+        align-items: center;
+        padding: 7px 12px;
+        border-radius: 999px;
+        font-size: 0.82rem;
+        font-weight: 700;
+    }
+    .meta-chip-green { background: var(--green-bg); color: var(--green-primary); }
+    .meta-chip-blue { background: var(--cream-dark); color: var(--brown); }
+    .meta-chip-amber { background: var(--orange-light); color: var(--brown); }
+
+    .chip-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 8px;
+    }
+
+    .table-toolbar {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    .table-clean {
+        width: 100%;
+        border-collapse: collapse;
+        background: var(--glass-card-bg);
+        border: 1px solid var(--glass-card-border);
+        border-radius: 12px;
+        overflow: hidden;
+        backdrop-filter: blur(var(--glass-blur));
+        -webkit-backdrop-filter: blur(var(--glass-blur));
+    }
+
+    .table-clean th,
+    .table-clean td {
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--glass-card-border);
+        text-align: left;
+    }
+
+    .table-clean th {
+        background: var(--cream-dark);
+        color: var(--brown);
+        font-size: 0.82rem;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+    }
+
+    .table-clean tbody tr:hover {
+        background: var(--green-bg);
+    }
+
+    .stat-card-click {
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .stat-card-click:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--hover-shadow);
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const signatureForm = document.getElementById('signature-form');
+    if (signatureForm) signatureForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fileInput = document.getElementById('signature-file');
+        if (!fileInput || !fileInput.files.length) {
+            alert('Please select a file');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('signature', fileInput.files[0]);
+
+        try {
+            const response = await fetch('/api/upload/signature', { method: 'POST', body: formData });
+            const result = await response.json();
+            if (result.success) {
+                alert('Signature uploaded successfully.');
+                location.reload();
+            } else {
+                alert(result.message || 'Upload failed');
+            }
+        } catch (error) {
+            alert('Error uploading signature');
+        }
+    });
+
+    async function submitPaper(paperId) {
+        if (!confirm('Submit this paper for HOD approval?')) return;
+        try {
+            const response = await fetch(`/api/paper/${paperId}/submit`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const result = await response.json();
+            if (result.success) {
+                alert('Paper submitted for approval.');
+                location.reload();
+            } else {
+                alert(result.message || 'Submission failed');
+            }
+        } catch (error) {
+            alert('Error submitting paper');
+        }
+    }
+
+    function viewComments(paperId, comments) {
+        alert('HOD comments:\n\n' + (comments || 'No comments provided'));
+    }
+
+    function filterTeacherPapers() {
+        const searchInput = document.getElementById('paper-search');
+        const statusInput = document.getElementById('paper-status-filter');
+        const search = ((searchInput && searchInput.value) || '').trim().toLowerCase();
+        const status = ((statusInput && statusInput.value) || 'all').trim().toLowerCase();
+        const rows = Array.from(document.querySelectorAll('#teacher-papers-body .paper-row'));
+        let visible = 0;
+
+        rows.forEach((row) => {
+            const rowStatus = (row.dataset.status || '').toLowerCase();
+            const rowSearch = (row.dataset.search || '').toLowerCase();
+            const matchStatus = status === 'all' || rowStatus === status;
+            const matchSearch = !search || rowSearch.includes(search);
+            const show = matchStatus && matchSearch;
+            row.style.display = show ? '' : 'none';
+            if (show) visible += 1;
+        });
+
+        const countEl = document.getElementById('visible-paper-count');
+        if (countEl) {
+            countEl.textContent = `Showing ${visible} / ${rows.length}`;
+        }
+    }
+
+    function jumpToSection(targetId, filterValue) {
+        const target = document.getElementById(targetId);
+        if (!target) return;
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (targetId === 'recent-papers-section' && filterValue) {
+            const statusFilter = document.getElementById('paper-status-filter');
+            if (statusFilter) {
+                statusFilter.value = filterValue;
+                filterTeacherPapers();
+            }
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        filterTeacherPapers();
+        document.querySelectorAll('.stat-card-click[data-target]').forEach((card) => {
+            card.addEventListener('click', () => {
+                const target = card.getAttribute('data-target');
+                const filter = card.getAttribute('data-filter');
+                jumpToSection(target, filter || '');
+            });
+        });
+    });
+</script>
+{% endblock %}
+

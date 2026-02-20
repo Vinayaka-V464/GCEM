@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}Complete Profile - Paper Generator{% endblock %}
+
+{% set show_navbar = false %}
+
+{% block content %}
+<div class="auth-page">
+    <div class="auth-card card fade-in" style="max-width: 720px;">
+        <div class="auth-header">
+            <div class="auth-logo">
+                <img src="{{ url_for('static', filename='logo.jpeg') }}" alt="Gopalan College Logo"
+                    style="height: 60px; border-radius: 8px;">
+            </div>
+            <h1 class="h2">Teacher Onboarding</h1>
+            <p class="text-muted">Complete your profile to access your dashboard</p>
+        </div>
+
+        {% if not user.email_verified %}
+        <div class="alert alert-info">
+            Please verify your email first. Check your inbox and click the verification link.
+        </div>
+        {% elif not user.profile_complete %}
+        <div class="section-label">Step 1</div>
+        <h3 class="h3 mb-2" style="color: var(--green-primary);">Complete Profile</h3>
+
+        <form id="profile-form">
+            <div class="form-group">
+                <label class="form-label">Full Name</label>
+                <input type="text" class="form-input" value="{{ user.name }}" readonly style="background:#f9fafb;">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Phone Number</label>
+                <input type="text" class="form-input" id="phone-input" placeholder="Enter your phone number" required>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Department</label>
+                <input type="text" class="form-input" value="{{ user.department }}" readonly style="background:#f9fafb;">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Subjects & Semesters</label>
+                <p class="text-muted" style="font-size: 0.875rem;">Select from HOD subject list.</p>
+                <div id="subject-list"
+                    style="max-height: 260px; overflow-y: auto; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px;">
+                    {% if subject_catalog %}
+                        {% for s in subject_catalog %}
+                        <label style="display:flex; align-items:flex-start; gap:8px; padding:6px 4px; border-bottom:1px solid #F1F5F9;">
+                            <input type="checkbox" class="subject-checkbox" value="{{ s.id }}" style="margin-top:3px;">
+                            <span>{{ s.subject_code }} - {{ s.subject_name }} (Sem {{ s.semester }})</span>
+                        </label>
+                        {% endfor %}
+                    {% else %}
+                        <div class="text-muted">No subjects configured by HOD yet.</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Sections</label>
+                <p class="text-muted" style="font-size: 0.875rem;">Select the sections you handle.</p>
+                <div id="section-list"
+                    style="max-height: 220px; overflow-y: auto; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px;">
+                    {% if section_catalog %}
+                        {% for sec in section_catalog %}
+                        <label style="display:flex; align-items:flex-start; gap:8px; padding:6px 4px; border-bottom:1px solid #F1F5F9;">
+                            <input type="checkbox" class="section-checkbox" value="{{ sec.id }}" style="margin-top:3px;">
+                            <span>Sem {{ sec.semester }} - {{ sec.section }}</span>
+                        </label>
+                        {% endfor %}
+                    {% else %}
+                        <div class="text-muted">No sections configured by HOD yet.</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-block">Submit for HOD Approval</button>
+        </form>
+        {% elif not user.approved_by_hod %}
+        <div class="section-label">Step 2</div>
+        <h3 class="h3 mb-2" style="color: var(--green-primary);">Pending HOD Approval</h3>
+        <p class="text-muted">Your profile has been submitted. HOD approval is required to access the dashboard.</p>
+
+        {% if subjects %}
+        <div class="card mt-3" style="padding: 16px;">
+            <div class="section-label">Submitted Subjects</div>
+            <ul style="margin: 0; padding-left: 18px;">
+                {% for s in subjects %}
+                <li>{{ s.subject_code }} - {{ s.subject_name }} (Sem {{ s.semester }})</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% if sections %}
+        <div class="card mt-3" style="padding: 16px;">
+            <div class="section-label">Submitted Sections</div>
+            <ul style="margin: 0; padding-left: 18px;">
+                {% for sec in sections %}
+                <li>Sem {{ sec.semester }} - {{ sec.section }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        <div class="mt-3">
+            <a href="/teacher/onboarding" class="btn btn-outline btn-block">Refresh Status</a>
+        </div>
+        {% else %}
+        <div class="alert alert-success">
+            ✅ Approved by HOD. You can now access your dashboard.
+        </div>
+        <a href="/teacher/dashboard" class="btn btn-primary btn-block mt-2">Go to Dashboard</a>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const form = document.getElementById('profile-form');
+    if (form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const phone = document.getElementById('phone-input').value.trim();
+            const subjectIds = Array.from(document.querySelectorAll('.subject-checkbox:checked')).map(c => c.value);
+            const sectionIds = Array.from(document.querySelectorAll('.section-checkbox:checked')).map(c => c.value);
+
+            const resp = await fetch('/api/teacher/complete-profile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone, subject_ids: subjectIds, section_ids: sectionIds })
+            });
+            const result = await resp.json();
+            if (result.success) {
+                window.location.reload();
+            } else {
+                alert(result.message || 'Failed to submit profile');
+            }
+        });
+    }
+</script>
+{% endblock %}
