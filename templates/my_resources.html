@@ -42,11 +42,11 @@
                         <td style="padding: 14px;">{{ qb.subject }}</td>
                         <td style="padding: 14px; color: #64748B;">{{ qb.created_at[:10] }}</td>
                         <td style="padding: 14px; text-align: right;">
-                            <a href="/uploads/{{ qb.file_path }}" class="btn btn-outline"
+                            <a href="{{ get_file_url(qb.file_path) }}" class="btn btn-outline"
                                 style="padding: 6px 12px; font-size: 0.75rem;" target="_blank">
                                 View PDF
                             </a>
-                            <a href="/uploads/{{ qb.file_path }}" class="btn btn-primary"
+                            <a href="{{ get_file_url(qb.file_path) }}" class="btn btn-primary"
                                 style="padding: 6px 12px; font-size: 0.75rem; margin-left: 8px;" download>
                                 Download
                             </a>
@@ -95,11 +95,11 @@
                         <td style="padding: 14px;">{{ note.subject }}</td>
                         <td style="padding: 14px; color: #64748B;">{{ note.created_at[:10] }}</td>
                         <td style="padding: 14px; text-align: right;">
-                            <a href="/uploads/{{ note.file_path }}" class="btn btn-outline"
+                            <a href="{{ get_file_url(note.file_path) }}" class="btn btn-outline"
                                 style="padding: 6px 12px; font-size: 0.75rem;" target="_blank">
                                 View PDF
                             </a>
-                            <a href="/uploads/{{ note.file_path }}" class="btn btn-primary"
+                            <a href="{{ get_file_url(note.file_path) }}" class="btn btn-primary"
                                 style="padding: 6px 12px; font-size: 0.75rem; margin-left: 8px;" download>
                                 Download
                             </a>

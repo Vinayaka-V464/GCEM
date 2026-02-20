@@ -65,7 +65,7 @@
                                 View
                             </a>
                             {% if paper.pdf_path %}
-                            <a href="/uploads/{{ paper.pdf_path }}" class="btn btn-outline"
+                            <a href="{{ get_file_url(paper.pdf_path) }}" class="btn btn-outline"
                                 style="padding: 6px 12px; font-size: 0.75rem;" download>
                                 Download
                             </a>

@@ -177,6 +177,16 @@ def _open_pdf_from_source(source):
         return fitz.open(tmp.name), tmp.name
     return fitz.open(source), None
 
+def get_file_url(path):
+    """Return the raw path if it is a Cloudinary URL or prepend /uploads/ otherwise."""
+    if not path:
+        return ""
+    if path.startswith('http://') or path.startswith('https://'):
+        return path
+    return f"/uploads/{path}"
+
+app.jinja_env.globals.update(get_file_url=get_file_url)
+
 
 def parse_question_bank_pdf(pdf_source):
     """Parse question bank PDF from a local path or Cloudinary URL."""

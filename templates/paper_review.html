@@ -39,7 +39,7 @@
             {% if paper.teacher_signature %}
             <div style="margin-bottom: 24px;">
                 <p class="text-muted" style="font-size: 0.875rem; margin-bottom: 8px;">Teacher Signature</p>
-                <img src="/uploads/{{ paper.teacher_signature }}" alt="Teacher Signature"
+                <img src="{{ get_file_url(paper.teacher_signature) }}" alt="Teacher Signature"
                     style="max-height: 80px; border: 1px solid #ddd; border-radius: 8px; padding: 8px; background: white;">
             </div>
             {% endif %}
@@ -49,10 +49,10 @@
                 <a href="/paper/{{ paper.id }}" class="btn btn-outline" target="_blank">
                     👁️ View Paper
                 </a>
-                <a href="/uploads/{{ paper.pdf_path }}" class="btn btn-outline" target="_blank">
+                <a href="{{ get_file_url(paper.pdf_path) }}" class="btn btn-outline" target="_blank">
                     📄 Open PDF in New Tab
                 </a>
-                <a href="/uploads/{{ paper.pdf_path }}" class="btn btn-secondary ml-2" download>
+                <a href="{{ get_file_url(paper.pdf_path) }}" class="btn btn-secondary ml-2" download>
                     ⬇️ Download PDF
                 </a>
             </div>
@@ -61,7 +61,7 @@
             <div class="section-label mt-4">Full Paper Preview</div>
             <div
                 style="border: 2px solid var(--green-primary); border-radius: 12px; overflow: hidden; margin-top: 12px;">
-                <iframe src="/uploads/{{ paper.pdf_path }}" style="width: 100%; height: 800px; border: none;"
+                <iframe src="{{ get_file_url(paper.pdf_path) }}" style="width: 100%; height: 800px; border: none;"
                     title="Paper Preview">
                 </iframe>
             </div>
@@ -78,15 +78,16 @@
             <h3 class="h4 mb-3" style="color: var(--green-primary);">Approve or Reject this Paper</h3>
 
             {% if current_user.signature_path and current_user.principal_signature_path %}
-            <div style="margin-bottom: 24px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px;">
+            <div
+                style="margin-bottom: 24px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px;">
                 <div>
                     <p class="text-muted mb-2">HOD signature will be added:</p>
-                    <img src="/uploads/{{ current_user.signature_path }}" alt="HOD Signature"
+                    <img src="{{ get_file_url(current_user.signature_path) }}" alt="HOD Signature"
                         style="max-height: 60px; border: 1px solid #ddd; border-radius: 8px; padding: 8px; background: white;">
                 </div>
                 <div>
                     <p class="text-muted mb-2">Principal signature will be added:</p>
-                    <img src="/uploads/{{ current_user.principal_signature_path }}" alt="Principal Signature"
+                    <img src="{{ get_file_url(current_user.principal_signature_path) }}" alt="Principal Signature"
                         style="max-height: 60px; border: 1px solid #ddd; border-radius: 8px; padding: 8px; background: white;">
                 </div>
             </div>

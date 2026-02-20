@@ -80,8 +80,8 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label">Department</label>
-                        <input type="text" class="form-input" name="dept" value="{{ current_user.department }}"
-                            readonly style="background: #f9fafb;">
+                        <input type="text" class="form-input" name="dept" value="{{ current_user.department }}" readonly
+                            style="background: #f9fafb;">
                     </div>
                     <div class="form-group">
                         <label class="form-label">Date</label>
@@ -102,8 +102,8 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label">Course Name</label>
-                        <input type="text" class="form-input" name="course_name" id="course-name-input"
-                            value="" placeholder="Select subject" readonly style="background: #f9fafb;">
+                        <input type="text" class="form-input" name="course_name" id="course-name-input" value=""
+                            placeholder="Select subject" readonly style="background: #f9fafb;">
                     </div>
                     <div class="form-group">
                         <label class="form-label">Max. Marks</label>
@@ -188,8 +188,7 @@
                     <div id="module-selection_container" style="display: flex; flex-direction: column; gap: 12px;">
                         {% if question_banks %}
                         {% for qb in question_banks %}
-                        <div class="module-selection-row"
-                            data-subject-code="{{ qb.subject_code_parsed }}"
+                        <div class="module-selection-row" data-subject-code="{{ qb.subject_code_parsed }}"
                             data-semester="{{ qb.semester_core_parsed }}">
                             <input type="checkbox" id="qb_{{ qb.id }}" name="qb_ids[]" value="{{ qb.id }}"
                                 style="width: 20px; height: 20px; accent-color: var(--green-primary);">
@@ -201,7 +200,7 @@
                                     Subject: {{ qb.subject }} | Date: {{ qb.created_at[:10] }}
                                 </div>
                             </div>
-                            <a href="/uploads/{{ qb.file_path }}" target="_blank" class="btn btn-sm btn-outline"
+                            <a href="{{ get_file_url(qb.file_path) }}" target="_blank" class="btn btn-sm btn-outline"
                                 style="font-size: 0.75rem;">View PDF</a>
                         </div>
                         {% endfor %}
@@ -539,5 +538,3 @@
     }
 </script>
 {% endblock %}
-
-

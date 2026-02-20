@@ -78,7 +78,7 @@
             {% if user.signature_path %}
             <div style="margin-bottom: 16px;">
                 <p class="text-muted mb-2">Current signature:</p>
-                <img src="/uploads/{{ user.signature_path }}" alt="Teacher Signature"
+                <img src="{{ get_file_url(user.signature_path) }}" alt="Teacher Signature"
                     style="max-height: 80px; border: 1px solid var(--glass-border); border-radius: 8px; padding: 8px; background: var(--glass-bg);">
             </div>
             {% endif %}

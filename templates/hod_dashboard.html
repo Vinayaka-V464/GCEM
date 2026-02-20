@@ -44,7 +44,7 @@
             {% if user.signature_path %}
             <div style="margin-bottom: 16px;">
                 <p class="text-muted mb-2">Current signature:</p>
-                <img src="/uploads/{{ user.signature_path }}" alt="HOD Signature"
+                <img src="{{ get_file_url(user.signature_path) }}" alt="HOD Signature"
                     style="max-height: 80px; border: 1px solid var(--glass-border); border-radius: 8px; padding: 8px; background: var(--glass-bg);">
             </div>
             {% endif %}
@@ -64,14 +64,15 @@
             {% if user.principal_signature_path %}
             <div style="margin-bottom: 16px;">
                 <p class="text-muted mb-2">Current principal signature:</p>
-                <img src="/uploads/{{ user.principal_signature_path }}" alt="Principal Signature"
+                <img src="{{ get_file_url(user.principal_signature_path) }}" alt="Principal Signature"
                     style="max-height: 80px; border: 1px solid var(--glass-border); border-radius: 8px; padding: 8px; background: var(--glass-bg);">
             </div>
             {% endif %}
 
             <form id="principal-signature-form" enctype="multipart/form-data">
                 <div class="form-group" style="max-width: 400px;">
-                    <input type="file" class="form-input" id="principal-signature-file" name="signature" accept="image/*">
+                    <input type="file" class="form-input" id="principal-signature-file" name="signature"
+                        accept="image/*">
                 </div>
                 <button type="submit" class="btn btn-secondary">Upload Principal Signature</button>
             </form>
@@ -91,7 +92,8 @@
                             <label for="tt-sem" style="font-size: 0.875rem;">Semester</label>
                             <select name="semester" id="tt-sem" class="form-input" onchange="syncTimetableSections()">
                                 {% for sem in semester_options %}
-                                <option value="{{ sem }}">{{ sem }}{% if sem == '1' %}st{% elif sem == '2' %}nd{% elif sem == '3' %}rd{% else %}th{% endif %} Semester</option>
+                                <option value="{{ sem }}">{{ sem }}{% if sem == '1' %}st{% elif sem == '2' %}nd{% elif
+                                    sem == '3' %}rd{% else %}th{% endif %} Semester</option>
                                 {% endfor %}
                             </select>
                         </div>
@@ -100,7 +102,8 @@
                             <select name="section" id="tt-section" class="form-input">
                                 <option value="">Select Section</option>
                                 {% for sec in section_catalog %}
-                                <option value="{{ sec.section }}" data-sem="{{ sec.semester }}">Sem {{ sec.semester }} - {{ sec.section }}</option>
+                                <option value="{{ sec.section }}" data-sem="{{ sec.semester }}">Sem {{ sec.semester }} -
+                                    {{ sec.section }}</option>
                                 {% endfor %}
                             </select>
                         </div>
@@ -122,7 +125,8 @@
                             <label for="cal-sem" style="font-size: 0.875rem;">Semester</label>
                             <select name="semester" id="cal-sem" class="form-input">
                                 {% for sem in semester_options %}
-                                <option value="{{ sem }}">{{ sem }}{% if sem == '1' %}st{% elif sem == '2' %}nd{% elif sem == '3' %}rd{% else %}th{% endif %} Semester</option>
+                                <option value="{{ sem }}">{{ sem }}{% if sem == '1' %}st{% elif sem == '2' %}nd{% elif
+                                    sem == '3' %}rd{% else %}th{% endif %} Semester</option>
                                 {% endfor %}
                             </select>
                         </div>
@@ -138,7 +142,8 @@
                             <label for="cal-clear-sem" style="font-size: 0.875rem;">Clear Semester</label>
                             <select name="semester" id="cal-clear-sem" class="form-input">
                                 {% for sem in semester_options %}
-                                <option value="{{ sem }}">{{ sem }}{% if sem == '1' %}st{% elif sem == '2' %}nd{% elif sem == '3' %}rd{% else %}th{% endif %} Semester</option>
+                                <option value="{{ sem }}">{{ sem }}{% if sem == '1' %}st{% elif sem == '2' %}nd{% elif
+                                    sem == '3' %}rd{% else %}th{% endif %} Semester</option>
                                 {% endfor %}
                             </select>
                         </div>
@@ -152,7 +157,8 @@
                     <a href="/digital-campus" class="btn btn-outline" target="_blank">View Digital Campus</a>
                     <div style="display:flex; gap:8px; align-items:center;">
                         <label for="preview-sem" style="font-size:0.875rem; font-weight:600;">Preview:</label>
-                        <select id="preview-sem" class="form-input" style="width:auto; min-width:120px;" onchange="syncPreviewSections()">
+                        <select id="preview-sem" class="form-input" style="width:auto; min-width:120px;"
+                            onchange="syncPreviewSections()">
                             {% for sem in semester_options %}
                             <option value="{{ sem }}">{{ sem }}</option>
                             {% endfor %}
@@ -160,10 +166,12 @@
                         <select id="preview-section" class="form-input" style="width:auto; min-width:140px;">
                             <option value="">Select Section</option>
                             {% for sec in section_catalog %}
-                            <option value="{{ sec.section }}" data-sem="{{ sec.semester }}">Sem {{ sec.semester }} - {{ sec.section }}</option>
+                            <option value="{{ sec.section }}" data-sem="{{ sec.semester }}">Sem {{ sec.semester }} - {{
+                                sec.section }}</option>
                             {% endfor %}
                         </select>
-                        <button type="button" class="btn btn-secondary btn-sm" onclick="openSectionPreview()">Open Section</button>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="openSectionPreview()">Open
+                            Section</button>
                     </div>
                 </div>
             </div>
@@ -203,14 +211,18 @@
             <div class="section-label">Teacher Directory</div>
             <h3 class="h4 mb-2" style="color: var(--green-primary);">All Teachers</h3>
             <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-bottom:12px;">
-                <input id="teacher-search" type="text" class="form-input" placeholder="Search by name, email or phone..."
-                       style="max-width:420px;" oninput="filterTeacherRows()">
-                <select id="teacher-status-filter" class="form-input" style="width:auto;" onchange="filterTeacherRows()">
+                <input id="teacher-search" type="text" class="form-input"
+                    placeholder="Search by name, email or phone..." style="max-width:420px;"
+                    oninput="filterTeacherRows()">
+                <select id="teacher-status-filter" class="form-input" style="width:auto;"
+                    onchange="filterTeacherRows()">
                     <option value="all">All Statuses</option>
                     <option value="approved">Approved</option>
                     <option value="pending">Pending</option>
                 </select>
-                <span class="badge" id="teacher-visible-count" style="background: var(--green-bg); color: var(--green-primary);">Showing {{ teachers|length }} / {{ teachers|length }}</span>
+                <span class="badge" id="teacher-visible-count"
+                    style="background: var(--green-bg); color: var(--green-primary);">Showing {{ teachers|length }} / {{
+                    teachers|length }}</span>
             </div>
             <table style="width:100%; border-collapse: collapse;">
                 <thead>
@@ -226,8 +238,7 @@
                 </thead>
                 <tbody id="teacher-directory-body">
                     {% for t in teachers %}
-                    <tr class="teacher-row"
-                        data-teacher-id="{{ t.id }}"
+                    <tr class="teacher-row" data-teacher-id="{{ t.id }}"
                         data-status="{{ 'approved' if t.approved_by_hod else 'pending' }}"
                         data-search="{{ (t.name ~ ' ' ~ t.email ~ ' ' ~ (t.phone or '') ~ ' ' ~ (t.subjects_count|string) ~ ' ' ~ (t.sections_count|string))|lower }}"
                         style="border-bottom: 1px solid var(--glass-card-border);">
@@ -244,19 +255,24 @@
                             {% endif %}
                         </td>
                         <td style="padding:12px; text-align:right;">
-                            <button class="btn btn-outline btn-sm" onclick="openTeacherDetails('{{ t.id }}')">View Full Details</button>
+                            <button class="btn btn-outline btn-sm" onclick="openTeacherDetails('{{ t.id }}')">View Full
+                                Details</button>
                         </td>
                     </tr>
                     {% endfor %}
                     {% if not teachers %}
-                    <tr><td colspan="7" style="padding:24px; text-align:center; color:var(--brown-light);">No teachers found.</td></tr>
+                    <tr>
+                        <td colspan="7" style="padding:24px; text-align:center; color:var(--brown-light);">No teachers
+                            found.</td>
+                    </tr>
                     {% endif %}
                 </tbody>
             </table>
         </div>
 
         {% if pending_teachers %}
-        <div class="section-label mt-4 fade-in" id="pending-teachers-section" style="animation-delay: 0.32s;">Pending Teacher Approvals</div>
+        <div class="section-label mt-4 fade-in" id="pending-teachers-section" style="animation-delay: 0.32s;">Pending
+            Teacher Approvals</div>
         <div class="card fade-in" style="animation-delay: 0.32s;">
             <table style="width: 100%; border-collapse: collapse;">
                 <thead>
@@ -274,7 +290,8 @@
                         <td style="padding: 14px;">{{ t.email }}</td>
                         <td style="padding: 14px;">{{ t.phone or '-' }}</td>
                         <td style="padding: 14px; text-align: right;">
-                            <button class="btn btn-primary btn-sm" onclick="approveTeacher('{{ t.id }}')">Approve</button>
+                            <button class="btn btn-primary btn-sm"
+                                onclick="approveTeacher('{{ t.id }}')">Approve</button>
                         </td>
                     </tr>
                     {% endfor %}
@@ -284,7 +301,8 @@
         {% endif %}
 
         <!-- Pending Approvals -->
-        <div class="section-label mt-4 fade-in" id="pending-papers-section" style="animation-delay: 0.3s;">Pending Approvals</div>
+        <div class="section-label mt-4 fade-in" id="pending-papers-section" style="animation-delay: 0.3s;">Pending
+            Approvals</div>
         <h2 class="h3 mb-3 fade-in" style="animation-delay: 0.3s; color: var(--green-primary);">Papers Awaiting Your
             Review</h2>
 
@@ -359,18 +377,23 @@
         z-index: 999;
         padding: 16px;
     }
-    .event-modal.show { display: flex; }
+
+    .event-modal.show {
+        display: flex;
+    }
+
     .event-modal-card {
         background: var(--glass-card-bg);
         border-radius: 16px;
         padding: 20px;
         width: 100%;
         border: 1px solid var(--glass-card-border);
-        box-shadow: 0 20px 50px -20px rgba(0,0,0,0.45);
+        box-shadow: 0 20px 50px -20px rgba(0, 0, 0, 0.45);
         position: relative;
         backdrop-filter: blur(var(--glass-blur));
         -webkit-backdrop-filter: blur(var(--glass-blur));
     }
+
     .event-modal-close {
         position: absolute;
         top: 10px;
@@ -382,7 +405,11 @@
         cursor: pointer;
         background: var(--glass-bg);
     }
-    .event-modal-header { margin-bottom: 8px; }
+
+    .event-modal-header {
+        margin-bottom: 8px;
+    }
+
     .event-type-pill {
         display: inline-flex;
         align-items: center;
@@ -391,18 +418,26 @@
         font-size: 0.75rem;
         font-weight: 700;
     }
-    .pill-event { background: var(--status-info-bg); color: var(--status-info-text); }
+
+    .pill-event {
+        background: var(--status-info-bg);
+        color: var(--status-info-text);
+    }
+
     .stat-card-click {
         cursor: pointer;
         transition: transform 0.2s ease, box-shadow 0.2s ease;
     }
+
     .stat-card-click:hover {
         transform: translateY(-2px);
         box-shadow: var(--hover-shadow);
     }
+
     #teacher-directory-body .teacher-row {
         cursor: pointer;
     }
+
     #teacher-directory-body .teacher-row:hover {
         background: var(--glass-bg);
     }
@@ -623,7 +658,3 @@
     }
 </script>
 {% endblock %}
-
-
-
-

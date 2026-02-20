@@ -9,7 +9,19 @@ import psycopg2.extras
 from datetime import datetime
 import json
 
+# Load .env file for local development
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL environment variable is not set. "
+        "Add it in Vercel Project Settings → Environment Variables."
+    )
 
 
 def get_db():

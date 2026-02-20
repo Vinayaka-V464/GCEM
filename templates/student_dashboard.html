@@ -10,7 +10,8 @@
         <div class="dashboard-header fade-in">
             <div class="section-label">Student Dashboard</div>
             <h1 class="h1">Welcome, {{ user.name or 'Student' }}!</h1>
-            <p class="text-muted" style="font-size: 1.0625rem;">Access semester-wise notes, question banks, and upcoming events.</p>
+            <p class="text-muted" style="font-size: 1.0625rem;">Access semester-wise notes, question banks, and upcoming
+                events.</p>
         </div>
 
         <div class="card fade-in" style="animation-delay: 0.05s; margin-bottom: 16px;">
@@ -56,8 +57,12 @@
         <div class="card fade-in" style="animation-delay: 0.24s;">
             <div class="toolbar">
                 <h2 class="h3" style="margin: 0; color: var(--green-primary);">Notes</h2>
-                <input id="notes-search" type="text" class="form-input" placeholder="Search notes by title or subject..." style="max-width: 360px;" oninput="filterResourceCards('notes-search', '#notes-grid .resource-card', 'notes-visible-count')">
-                <span class="badge" id="notes-visible-count" style="background: var(--green-bg); color: var(--green-primary);">Showing {{ notes|length if notes else 0 }} / {{ notes|length if notes else 0 }}</span>
+                <input id="notes-search" type="text" class="form-input"
+                    placeholder="Search notes by title or subject..." style="max-width: 360px;"
+                    oninput="filterResourceCards('notes-search', '#notes-grid .resource-card', 'notes-visible-count')">
+                <span class="badge" id="notes-visible-count"
+                    style="background: var(--green-bg); color: var(--green-primary);">Showing {{ notes|length if notes
+                    else 0 }} / {{ notes|length if notes else 0 }}</span>
             </div>
 
             {% if notes %}
@@ -66,7 +71,8 @@
                 <div class="resource-card" data-search="{{ (note.title ~ ' ' ~ (note.subject or ''))|lower }}">
                     <h4 class="h4" style="margin-bottom: 8px;">{{ note.title }}</h4>
                     <p class="text-muted" style="font-size: 0.88rem; margin-bottom: 12px;">{{ note.subject or '-' }}</p>
-                    <a href="/uploads/{{ note.file_path }}" class="btn btn-outline" style="padding: 8px 14px; font-size: 0.82rem;" download>Download</a>
+                    <a href="{{ get_file_url(note.file_path) }}" class="btn btn-outline"
+                        style="padding: 8px 14px; font-size: 0.82rem;" download>Download</a>
                 </div>
                 {% endfor %}
             </div>
@@ -84,8 +90,12 @@
         <div class="card fade-in" style="animation-delay: 0.34s;">
             <div class="toolbar">
                 <h2 class="h3" style="margin: 0; color: var(--green-primary);">Question Bank Files</h2>
-                <input id="qb-search" type="text" class="form-input" placeholder="Search by title or subject..." style="max-width: 360px;" oninput="filterResourceCards('qb-search', '#qb-grid .resource-card', 'qb-visible-count')">
-                <span class="badge" id="qb-visible-count" style="background: var(--green-bg); color: var(--green-primary);">Showing {{ question_banks|length if question_banks else 0 }} / {{ question_banks|length if question_banks else 0 }}</span>
+                <input id="qb-search" type="text" class="form-input" placeholder="Search by title or subject..."
+                    style="max-width: 360px;"
+                    oninput="filterResourceCards('qb-search', '#qb-grid .resource-card', 'qb-visible-count')">
+                <span class="badge" id="qb-visible-count"
+                    style="background: var(--green-bg); color: var(--green-primary);">Showing {{ question_banks|length
+                    if question_banks else 0 }} / {{ question_banks|length if question_banks else 0 }}</span>
             </div>
 
             {% if question_banks %}
@@ -94,7 +104,8 @@
                 <div class="resource-card" data-search="{{ (qb.title ~ ' ' ~ (qb.subject or ''))|lower }}">
                     <h4 class="h4" style="margin-bottom: 8px;">{{ qb.title }}</h4>
                     <p class="text-muted" style="font-size: 0.88rem; margin-bottom: 12px;">{{ qb.subject or '-' }}</p>
-                    <a href="/uploads/{{ qb.file_path }}" class="btn btn-outline" style="padding: 8px 14px; font-size: 0.82rem;" download>Download</a>
+                    <a href="{{ get_file_url(qb.file_path) }}" class="btn btn-outline"
+                        style="padding: 8px 14px; font-size: 0.82rem;" download>Download</a>
                 </div>
                 {% endfor %}
             </div>
@@ -115,7 +126,8 @@
                 {% for ev in events[:10] %}
                 <div class="event-item">
                     <div class="event-item-top">
-                        <span class="badge" style="background: var(--cream-dark); color: var(--brown);">{{ (ev.type or 'event')|upper }}</span>
+                        <span class="badge" style="background: var(--cream-dark); color: var(--brown);">{{ (ev.type or
+                            'event')|upper }}</span>
                         <span class="event-date">{{ ev.event_date }}</span>
                     </div>
                     <div class="event-title">{{ ev.title }}</div>
@@ -156,9 +168,20 @@
         font-weight: 700;
     }
 
-    .meta-chip-green { background: var(--green-bg); color: var(--green-primary); }
-    .meta-chip-blue { background: var(--cream-dark); color: var(--brown); }
-    .meta-chip-amber { background: var(--orange-light); color: var(--brown); }
+    .meta-chip-green {
+        background: var(--green-bg);
+        color: var(--green-primary);
+    }
+
+    .meta-chip-blue {
+        background: var(--cream-dark);
+        color: var(--brown);
+    }
+
+    .meta-chip-amber {
+        background: var(--orange-light);
+        color: var(--brown);
+    }
 
     .stat-card-click {
         cursor: pointer;
