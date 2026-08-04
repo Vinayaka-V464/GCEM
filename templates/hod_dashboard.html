@@ -177,6 +177,55 @@
             </div>
         </div>
 
+        <div class="card fade-in mt-4" style="animation-delay: 0.28s;">
+            <div class="section-label">Previous Year Question Paper Analysis</div>
+            <h3 class="h4 mb-2" style="color: var(--green-primary);">Upload previous year papers and find repeated questions</h3>
+            <p class="text-muted" style="margin-bottom: 12px;">Upload one or more PDF papers and view the most repeated questions. You can choose how many results to show (for example 10 or 15).</p>
+
+            <form action="/hod/analyze-question-papers" method="POST" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label class="form-label">Question Papers (PDF)</label>
+                    <input type="file" class="form-input" name="question_papers" accept=".pdf" multiple required>
+                </div>
+                <div class="form-group" style="max-width: 220px;">
+                    <label class="form-label">Show Top Results</label>
+                    <input type="number" class="form-input" name="top_n" min="5" max="50" value="{{ question_analysis.top_n if question_analysis else 10 }}">
+                </div>
+                <button type="submit" class="btn btn-secondary">Analyze Repeated Questions</button>
+            </form>
+
+            {% if question_analysis %}
+            <div class="mt-4">
+                <div class="text-muted" style="margin-bottom: 10px;">
+                    Analyzed {{ question_analysis.total_questions }} extracted questions from {{ question_analysis.files|length }} uploaded PDF(s).
+                </div>
+                {% if question_analysis.results %}
+                <div style="display: grid; gap: 10px;">
+                    {% for item in question_analysis.results %}
+                    <div style="border: 1px solid var(--glass-card-border); border-radius: 12px; padding: 12px; background: var(--glass-bg);">
+                        <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:6px;">
+                            <strong>{{ loop.index }}.</strong>
+                            <span class="badge" style="background: var(--green-bg); color: var(--green-primary);">Repeated {{ item.count }} times</span>
+                        </div>
+                        <div style="color: var(--brown); line-height: 1.5; margin-bottom: 8px;">{{ item.question }}</div>
+                        <div style="font-size: 0.9rem; color: var(--muted);">
+                            <div><strong>Matched in:</strong></div>
+                            <ul style="margin: 6px 0 0 18px; padding: 0;">
+                                {% for occurrence in item.occurrences %}
+                                <li><strong>{{ occurrence.paper_name }}</strong> — {{ occurrence.year }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="alert alert-warning">No repeated questions were found from the uploaded papers.</div>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+
         <!-- Quick Actions -->
         <div class="quick-actions fade-in mt-4"
             style="animation-delay: 0.3s; display: flex; gap: 16px; flex-wrap: wrap;">
@@ -240,7 +289,7 @@
                     {% for t in teachers %}
                     <tr class="teacher-row" data-teacher-id="{{ t.id }}"
                         data-status="{{ 'approved' if t.approved_by_hod else 'pending' }}"
-                        data-search="{{ (t.name ~ ' ' ~ t.email ~ ' ' ~ (t.phone or '') ~ ' ' ~ (t.subjects_count|string) ~ ' ' ~ (t.sections_count|string))|lower }}"
+                        data-search="{{ (t.name ~ ' ' ~ t.email ~ ' ' ~ (t.phone or '') ~ ' ' ~ (t.subjects_count|string) ~ ' ' ~ (t.sections_count|string) ~ ' ' ~ (t.semester or '') ~ ' ' ~ (t.section or ''))|lower }}"
                         style="border-bottom: 1px solid var(--glass-card-border);">
                         <td style="padding:12px;">{{ t.name }}</td>
                         <td style="padding:12px;">{{ t.email }}</td>
@@ -257,6 +306,33 @@
                         <td style="padding:12px; text-align:right;">
                             <button class="btn btn-outline btn-sm" onclick="openTeacherDetails('{{ t.id }}')">View Full
                                 Details</button>
+                        </td>
+                    </tr>
+                    <tr class="teacher-extra-row">
+                        <td colspan="7" style="padding: 0 12px 14px 12px;">
+                            <div class="teacher-details-box">
+                                <div><strong>Semester:</strong> {{ t.semester or '-' }}</div>
+                                <div><strong>Section:</strong> {{ t.section or '-' }}</div>
+                                <div><strong>Phone:</strong> {{ t.phone or '-' }}</div>
+                                <div><strong>Subjects:</strong>
+                                    {% if t.subjects %}
+                                        {% for s in t.subjects %}
+                                            <span class="teacher-pill">{{ s.subject_code }} - {{ s.subject_name }} (Sem {{ s.semester }})</span>
+                                        {% endfor %}
+                                    {% else %}
+                                        <span class="text-muted">No subjects assigned</span>
+                                    {% endif %}
+                                </div>
+                                <div><strong>Sections:</strong>
+                                    {% if t.sections %}
+                                        {% for s in t.sections %}
+                                            <span class="teacher-pill">Sem {{ s.semester }} - {{ s.section }}</span>
+                                        {% endfor %}
+                                    {% else %}
+                                        <span class="text-muted">No sections assigned</span>
+                                    {% endif %}
+                                </div>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}
@@ -440,6 +516,31 @@
 
     #teacher-directory-body .teacher-row:hover {
         background: var(--glass-bg);
+    }
+
+    .teacher-extra-row td {
+        border: 0;
+        padding-top: 0;
+    }
+
+    .teacher-details-box {
+        display: grid;
+        gap: 8px;
+        padding: 12px 14px;
+        border-radius: 12px;
+        background: var(--cream-dark);
+        border: 1px solid var(--glass-card-border);
+        color: var(--brown);
+    }
+
+    .teacher-pill {
+        display: inline-block;
+        padding: 4px 8px;
+        margin: 2px 4px 2px 0;
+        border-radius: 999px;
+        background: var(--green-bg);
+        color: var(--green-primary);
+        font-size: 0.8rem;
     }
 </style>
 {% endblock %}

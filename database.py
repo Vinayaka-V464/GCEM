@@ -1,11 +1,9 @@
-# ==============================================================================
-# FILE: database.py - PostgreSQL Database for Paper Generator (Neon)
-# Migrated from SQLite: ? → %s, AUTOINCREMENT → SERIAL, lastrowid → RETURNING
+# ============================================================================== 
+# FILE: database.py - SQLite Database for Paper Generator
 # ==============================================================================
 
 import os
-import psycopg2
-import psycopg2.extras
+import sqlite3
 from datetime import datetime
 import json
 
@@ -16,18 +14,50 @@ try:
 except ImportError:
     pass
 
-DATABASE_URL = os.environ.get('DATABASE_URL', '')
-if not DATABASE_URL:
-    raise RuntimeError(
-        "DATABASE_URL environment variable is not set. "
-        "Add it in Vercel Project Settings → Environment Variables."
-    )
+def _resolve_db_path():
+    database_url = os.environ.get('DATABASE_URL', '').strip()
+    database_path = os.environ.get('DATABASE_PATH', '').strip()
+    candidate = database_path or database_url or 'paper_generator.db'
+    if candidate.startswith('sqlite:///'):
+        return candidate.replace('sqlite:///', '', 1)
+    if '://' in candidate:
+        raise RuntimeError('Only local SQLite database paths are supported.')
+    return candidate
+
+
+DB_PATH = _resolve_db_path()
+
+
+def _translate_sql(query):
+    return query.replace('%s', '?')
+
+
+class SQLiteCursor(sqlite3.Cursor):
+    def execute(self, query, parameters=None):
+        return super().execute(_translate_sql(query), parameters if parameters is not None else ())
+
+    def executemany(self, query, seq_of_parameters):
+        return super().executemany(_translate_sql(query), seq_of_parameters)
+
+
+class SQLiteConnection(sqlite3.Connection):
+    def cursor(self, factory=SQLiteCursor):
+        return super().cursor(factory)
 
 
 def get_db():
-    """Get a Postgres connection with RealDictCursor (rows as dicts)."""
-    conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+    """Get a SQLite connection with row access compatible with dict-like code."""
+    conn = sqlite3.connect(DB_PATH, factory=SQLiteConnection)
+    conn.row_factory = sqlite3.Row
+    conn.execute('PRAGMA foreign_keys = ON')
     return conn
+
+
+def _ensure_column(conn, table_name, column_definition):
+    column_name = column_definition.split()[0]
+    existing_columns = {row['name'] for row in conn.execute(f'PRAGMA table_info({table_name})')}
+    if column_name not in existing_columns:
+        conn.execute(f'ALTER TABLE {table_name} ADD COLUMN {column_definition}')
 
 
 def init_db():
@@ -59,7 +89,7 @@ def init_db():
     # Papers table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS papers (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             teacher_id TEXT NOT NULL,
             title TEXT,
             course_code TEXT,
@@ -82,7 +112,7 @@ def init_db():
     # Notes table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS notes (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             teacher_id TEXT NOT NULL,
             title TEXT NOT NULL,
             subject TEXT,
@@ -97,7 +127,7 @@ def init_db():
     # Question Bank table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS question_bank (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             teacher_id TEXT NOT NULL,
             title TEXT NOT NULL,
             subject TEXT,
@@ -112,7 +142,7 @@ def init_db():
     # Timetables table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS timetables (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             department TEXT,
             semester TEXT,
             section TEXT,
@@ -127,7 +157,7 @@ def init_db():
     # Teacher subjects table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS teacher_subjects (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             teacher_id TEXT NOT NULL,
             subject_code TEXT,
             subject_name TEXT,
@@ -141,7 +171,7 @@ def init_db():
     # Teacher sections table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS teacher_sections (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             teacher_id TEXT NOT NULL,
             semester TEXT,
             section TEXT,
@@ -155,7 +185,7 @@ def init_db():
     # Section catalog table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS section_catalog (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             department TEXT NOT NULL,
             semester TEXT NOT NULL,
             section TEXT NOT NULL,
@@ -167,7 +197,7 @@ def init_db():
     # Subject catalog table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS subject_catalog (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             department TEXT NOT NULL,
             semester TEXT NOT NULL,
             subject_code TEXT NOT NULL,
@@ -180,7 +210,7 @@ def init_db():
     # Events table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS events (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
             description TEXT,
             event_date DATE,
@@ -196,7 +226,7 @@ def init_db():
     # Timetable entries table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS timetable_entries (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             department TEXT,
             semester TEXT,
             section TEXT,
@@ -209,23 +239,22 @@ def init_db():
         )
     ''')
 
-    # Add any missing columns safely (Postgres 9.6+ supports ADD COLUMN IF NOT EXISTS)
-    safe_alters = [
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS principal_signature_path TEXT",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_complete INTEGER DEFAULT 0",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS approved_by_hod INTEGER DEFAULT 0",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS semester TEXT",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS section TEXT",
-        "ALTER TABLE timetables ADD COLUMN IF NOT EXISTS details TEXT",
-        "ALTER TABLE timetables ADD COLUMN IF NOT EXISTS section TEXT",
-        "ALTER TABLE papers ADD COLUMN IF NOT EXISTS principal_signature TEXT",
-        "ALTER TABLE events ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'event'",
-        "ALTER TABLE events ADD COLUMN IF NOT EXISTS semester TEXT",
-        "ALTER TABLE timetable_entries ADD COLUMN IF NOT EXISTS section TEXT",
-    ]
-    for stmt in safe_alters:
-        cursor.execute(stmt)
+    # Add any missing columns safely for older databases.
+    for table_name, column_definition in [
+        ('users', 'principal_signature_path TEXT'),
+        ('users', 'phone TEXT'),
+        ('users', 'profile_complete INTEGER DEFAULT 0'),
+        ('users', 'approved_by_hod INTEGER DEFAULT 0'),
+        ('users', 'semester TEXT'),
+        ('users', 'section TEXT'),
+        ('timetables', 'details TEXT'),
+        ('timetables', 'section TEXT'),
+        ('papers', 'principal_signature TEXT'),
+        ('events', "type TEXT DEFAULT 'event'"),
+        ('events', 'semester TEXT'),
+        ('timetable_entries', 'section TEXT'),
+    ]:
+        _ensure_column(conn, table_name, column_definition)
 
     conn.commit()
     conn.close()
@@ -472,12 +501,11 @@ def create_paper(teacher_id, title, course_code, course_name, department, paper_
     cursor = conn.cursor()
     cursor.execute('''
         INSERT INTO papers (teacher_id, title, course_code, course_name, department,
-                           paper_data, pdf_path, teacher_signature, status)
+                       paper_data, pdf_path, teacher_signature, status)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-        RETURNING id
     ''', (teacher_id, title, course_code, course_name, department,
           json.dumps(paper_data), pdf_path, teacher_signature, status))
-    paper_id = cursor.fetchone()['id']
+    paper_id = cursor.lastrowid
     conn.commit()
     conn.close()
     return paper_id
@@ -728,9 +756,8 @@ def create_note(teacher_id, title, subject, department, file_path, file_name):
     cursor.execute('''
         INSERT INTO notes (teacher_id, title, subject, department, file_path, file_name)
         VALUES (%s, %s, %s, %s, %s, %s)
-        RETURNING id
     ''', (teacher_id, title, subject, department, file_path, file_name))
-    note_id = cursor.fetchone()['id']
+    note_id = cursor.lastrowid
     conn.commit()
     conn.close()
     return note_id
@@ -768,9 +795,8 @@ def create_question_bank(teacher_id, title, subject, department, file_path, file
     cursor.execute('''
         INSERT INTO question_bank (teacher_id, title, subject, department, file_path, file_name)
         VALUES (%s, %s, %s, %s, %s, %s)
-        RETURNING id
     ''', (teacher_id, title, subject, department, file_path, file_name))
-    qb_id = cursor.fetchone()['id']
+    qb_id = cursor.lastrowid
     conn.commit()
     conn.close()
     return qb_id
@@ -805,7 +831,8 @@ def get_question_banks_by_ids(qb_ids):
         return []
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('SELECT * FROM question_bank WHERE id = ANY(%s) ORDER BY id', (list(qb_ids),))
+    placeholders = ', '.join(['?'] * len(qb_ids))
+    cursor.execute(f'SELECT * FROM question_bank WHERE id IN ({placeholders}) ORDER BY id', list(qb_ids))
     qbs = cursor.fetchall()
     conn.close()
     return [dict(qb) for qb in qbs]
@@ -820,9 +847,8 @@ def create_timetable(department, semester, section, title, file_path, file_name,
     cursor.execute('''
         INSERT INTO timetables (department, semester, section, title, file_path, file_name, details)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
-        RETURNING id
     ''', (department, semester, section, title, file_path, file_name, details))
-    tt_id = cursor.fetchone()['id']
+    tt_id = cursor.lastrowid
     conn.commit()
     conn.close()
     return tt_id
@@ -915,9 +941,8 @@ def create_event(title, description, event_date, event_time=None, location=None,
     cursor.execute('''
         INSERT INTO events (title, description, event_date, event_time, location, department, semester, type)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        RETURNING id
     ''', (title, description, event_date, event_time, location, department, str(semester) if semester is not None else None, event_type))
-    event_id = cursor.fetchone()['id']
+    event_id = cursor.lastrowid
     conn.commit()
     conn.close()
     return event_id

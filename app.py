@@ -8,7 +8,9 @@ import random
 import re
 import json
 import uuid
+import tempfile
 import fitz  # PyMuPDF
+from collections import Counter
 from datetime import datetime, timedelta
 
 # Load .env file (only needed in local dev; in production set env vars directly)
@@ -40,8 +42,12 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'paper-generator-secret-key-change-in-production')
 
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max
+app.config['UPLOAD_FOLDER'] = os.path.abspath(os.environ.get('UPLOAD_ROOT', 'uploads'))
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+for folder_name in ['signatures', 'notes', 'question_banks', 'timetables']:
+    os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], folder_name), exist_ok=True)
 
-# Cloud storage (Cloudinary)
+# Local file storage
 import storage as cloud_storage
 
 ALLOWED_EXTENSIONS = {'pdf', 'png', 'jpg', 'jpeg', 'gif'}
@@ -92,7 +98,7 @@ def encode_image_to_base64(file_storage):
         return None
 
 def signature_url_or_none(url):
-    """Return the Cloudinary URL as-is, or None if empty. Templates use this directly as <img src>."""
+    """Return a local uploads path as-is, or None if empty."""
     return url if url else None
 
 def normalize_subject_code(value):
@@ -161,35 +167,270 @@ def question_bank_matches_subject(qb, selected_code, selected_semester):
 def _open_pdf_from_source(source):
     """
     Open a PDF for PyMuPDF.
-    source can be a local file path OR a Cloudinary URL (http/https).
+    source must be a local file path.
     Returns (fitz.Document, tmp_path_or_None) — caller must delete tmp_path if not None.
     """
-    import urllib.request
-    import tempfile
-    if source.startswith('http://') or source.startswith('https://'):
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf', dir='/tmp')
-        try:
-            urllib.request.urlretrieve(source, tmp.name)
-        except Exception:
-            tmp.close()
-            raise
-        tmp.close()
-        return fitz.open(tmp.name), tmp.name
-    return fitz.open(source), None
+    source_path = str(source or '')
+    if not os.path.isabs(source_path):
+        source_path = os.path.join(app.config['UPLOAD_FOLDER'], source_path)
+    return fitz.open(source_path), None
 
 def get_file_url(path):
-    """Return the raw path if it is a Cloudinary URL or prepend /uploads/ otherwise."""
+    """Return a local uploads URL for a stored file path."""
     if not path:
         return ""
-    if path.startswith('http://') or path.startswith('https://'):
-        return path
-    return f"/uploads/{path}"
+    path_text = str(path).replace('\\', '/')
+    if path_text.startswith('/paper/'):
+        path_text = path_text[len('/paper/'):]
+    elif path_text.startswith('paper/'):
+        path_text = path_text[len('paper/'):]
+    if path_text.startswith('/uploads/'):
+        return path_text
+    if os.path.isabs(path_text):
+        try:
+            relative_path = os.path.relpath(path_text, app.config['UPLOAD_FOLDER']).replace('\\', '/')
+            return f"/uploads/{relative_path}"
+        except ValueError:
+            return ''
+    return f"/uploads/{path_text.lstrip('/')}"
 
 app.jinja_env.globals.update(get_file_url=get_file_url)
 
 
+@app.route('/uploads/<path:filename>')
+def serve_upload(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+
+@app.route('/paper/<path:filename>')
+def serve_legacy_paper_upload(filename):
+    """Compatibility route for older stored paths that still point under /paper/."""
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+
+def clean_question_text(text):
+    """Clean exam-paper text so only the actual question remains."""
+    if not text:
+        return ""
+
+    text = str(text).strip()
+    text = re.sub(r'\s+', ' ', text)
+
+    # Remove exam metadata like "M : Marks, L : Bloom's level, C : Course outcomes"
+    text = re.sub(r'\bM\s*:\s*Marks\b[^.]*?\bC\s*:\s*Course\s*outcomes\b', '', text, flags=re.I)
+    text = re.sub(r'\bM\s*:\s*Marks\b', '', text, flags=re.I)
+    text = re.sub(r'\bL\s*:\s*Bloom\s*["\']?s\s*level\b', '', text, flags=re.I)
+    text = re.sub(r'\bC\s*:\s*Course\s*outcomes\b', '', text, flags=re.I)
+
+    # Remove module and question number prefixes such as "M L C Module – 1 Q.1 a." or "10 L2 CO1 b."
+    prefix_tokens = [
+        r'^M\s+L\s+C\s*',
+        r'^M\s*:\s*Marks\s*',
+        r'^L\s*:\s*Bloom(?:\s*[\"\']?s)?\s*level\s*',
+        r'^C\s*:\s*Course\s*outcomes\s*',
+        r'^Module\b[^A-Za-z0-9]*[–-]?\s*\d+\s*',
+        r'^Q(?:uestion)?\.?\s*\d+(?:\.\d+)?(?:\s*[a-z])?\s*',
+        r'^[a-z]\s*[.)]\s*',
+        r'^[0-9]+\s*',
+        r'^[ivx]+\s*',
+        r'^\d+\s+[A-Za-z0-9]+\s+[A-Za-z0-9]+\s*',
+        r'^\d+\s+[A-Za-z0-9]+\s*',
+        r'^[A-Za-z]\d+\s+[A-Za-z0-9]+\s*',
+        r'^[A-Za-z]\d+\s*',
+    ]
+    while True:
+        changed = False
+        text = re.sub(r'^[\s,;:.:-]+', '', text)
+        for pattern in prefix_tokens:
+            new_text = re.sub(pattern, '', text, flags=re.I)
+            if new_text != text:
+                text = new_text
+                changed = True
+                break
+        if not changed:
+            break
+
+    question_word_match = re.search(
+        r'\b(?:what|why|how|describe|explain|write|state|differentiate|compare|define|list|discuss|identify|analyze|analyse|derive|sketch|draw|illustrate|name|give|show|find|solve|prove|calculate|prepare|elaborate)\b',
+        text,
+        flags=re.I,
+    )
+    if question_word_match:
+        text = text[question_word_match.start():]
+
+    # Ignore generic instructions, headers, and one-off fragments that are not questions.
+    if len(text) < 12:
+        return ""
+    if re.match(r'^(?:Answer|Note|Time|Max|Marks|Module|Question|Semester|Department|Department of|Internet of Things|Seventh Semester|B\.E\./B\.Tech\.)', text, re.I):
+        return ""
+    if not question_word_match and not re.search(r'[?]$', text) and len(re.findall(r'\b\w+\b', text)) < 5:
+        return ""
+
+    # Remove any remaining numbering or bullet prefixes at the start or trailing exam labels at the end
+    text = re.sub(r'^(?:\s*(?:Q(?:uestion)?\s*\d*|[0-9]+|[ivx]+|[a-z]\s*[.)])\s*)+', '', text, flags=re.I)
+    split_match = re.search(r'(?<!\w)(?:\b(?:\d+\s+L\d+|\d+\s+CO\d+|\d+\s+of\s+\d+|\b(?:BCS|MCA|CSE|ECE|EEE|ME|CE|ISE|AI|DS|CS)\d{3,4}\b|Module\b[^A-Za-z0-9]*[–-]?\s*\d+|Q(?:uestion)?\.?\s*\d+(?:\.\d+)?(?:\s*[a-z])?))', text, flags=re.I)
+    if split_match:
+        text = text[:split_match.start()].rstrip(' .:-')
+    text = re.sub(r'^[^A-Za-z0-9]+', '', text)
+
+    trailing_punct = ''
+    if re.search(r'[?.!]$', text):
+        trailing_punct = text[-1]
+        text = text[:-1].rstrip()
+
+    text = re.sub(r'[^A-Za-z0-9]+$', '', text)
+
+    text = re.sub(r'\s+', ' ', text).strip()
+    if trailing_punct:
+        text = text + trailing_punct
+    elif text and text[-1] not in '.!?':
+        text = text + '.'
+    return text
+
+
+def normalize_question_text(text):
+    """Normalize a question so repeated questions can be matched reliably."""
+    cleaned = clean_question_text(text)
+    if not cleaned:
+        return ""
+    cleaned = re.sub(r'[^a-z0-9]+', ' ', cleaned.lower())
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    return cleaned
+
+
+def infer_paper_context(filename, pdf_text):
+    """Infer a paper label and year from the filename and PDF text."""
+    paper_name = os.path.splitext(os.path.basename(str(filename or '')))[0] if filename else ''
+    year_text = ''
+
+    if pdf_text:
+        year_candidates = re.findall(r'(?:June|July|August|September|October|November|December|January|February|March|April|May|June-July|June\s*July|Dec|Jan|Feb|Mar|Apr|May)[^\n]{0,40}(?:20\d{2})', str(pdf_text), re.I)
+        if year_candidates:
+            year_text = year_candidates[0].strip()
+        else:
+            year_match = re.search(r'(20\d{2})', str(pdf_text))
+            if year_match:
+                year_text = year_match.group(1)
+
+    if not year_text and paper_name:
+        year_match = re.search(r'(20\d{2})', paper_name)
+        if year_match:
+            year_text = year_match.group(1)
+
+    if not year_text:
+        year_text = 'Unknown year'
+
+    return {
+        'paper_name': paper_name or 'Uploaded paper',
+        'year': year_text,
+    }
+
+
+def extract_questions_from_pdf(pdf_source):
+    """Extract likely question blocks from a PDF question-paper file."""
+    questions = []
+    _tmp_path = None
+
+    try:
+        doc, _tmp_path = _open_pdf_from_source(pdf_source)
+        full_text = "\n".join(page.get_text("text") for page in doc)
+        lines = [re.sub(r'\s+', ' ', ln).strip() for ln in full_text.splitlines() if re.sub(r'\s+', ' ', ln).strip()]
+
+        def _looks_like_question(line):
+            if not line:
+                return False
+            if len(line) < 10:
+                return False
+            if re.match(r'^(?:Q(?:uestion)?\s*)?[0-9]+[\.)]', line, re.I):
+                return True
+            if re.match(r'^[A-Za-z]\)', line):
+                return True
+            if re.search(r'\?$', line):
+                return True
+            if re.search(r'\b(?:what|why|how|describe|explain|write|state|differentiate|compare|define|list|discuss|sketch|draw|illustrate|derive|analyze|analyse)\b', line, re.I):
+                return True
+            return False
+
+        current = []
+
+        def _flush_current():
+            nonlocal current
+            if not current:
+                return
+            block = " ".join(part for part in current if part).strip()
+            cleaned_block = clean_question_text(block)
+            if len(cleaned_block) >= 12 and not re.fullmatch(r'[^A-Za-z0-9]+', cleaned_block):
+                questions.append(cleaned_block)
+            current = []
+
+        for line in lines:
+            if _looks_like_question(line):
+                _flush_current()
+                current = [line]
+            else:
+                if current:
+                    current.append(line)
+                elif len(line) >= 20:
+                    current = [line]
+
+        _flush_current()
+
+    except Exception as e:
+        print(f"Error extracting questions from PDF: {e}")
+        return []
+    finally:
+        if _tmp_path:
+            try:
+                os.unlink(_tmp_path)
+            except OSError:
+                pass
+
+    return questions
+
+
+def analyze_repeated_questions(question_texts, top_n=10):
+    """Return the most repeated questions with provenance details for each occurrence."""
+    normalized_counts = Counter()
+    display_by_key = {}
+    occurrences_by_key = {}
+
+    for entry in question_texts:
+        if isinstance(entry, dict):
+            question = entry.get('question')
+            source = entry.get('source') or {}
+        else:
+            question = entry
+            source = {}
+
+        normalized = normalize_question_text(question)
+        if not normalized:
+            continue
+        normalized_counts[normalized] += 1
+        display_by_key.setdefault(normalized, question.strip())
+        occurrences_by_key.setdefault(normalized, []).append({
+            'question': question.strip(),
+            'paper_name': source.get('paper_name') or 'Uploaded paper',
+            'year': source.get('year') or 'Unknown year',
+        })
+
+    ranked = []
+    for normalized, count in normalized_counts.most_common(max(1, int(top_n or 10))):
+        if count < 2:
+            continue
+        question_text = display_by_key.get(normalized, normalized)
+        if not question_text or len(question_text) < 12:
+            continue
+        ranked.append({
+            'question': question_text,
+            'count': count,
+            'normalized': normalized,
+            'occurrences': occurrences_by_key.get(normalized, []),
+        })
+    return ranked
+
+
 def parse_question_bank_pdf(pdf_source):
-    """Parse question bank PDF from a local path or Cloudinary URL."""
+    """Parse question bank PDF from a local path."""
     questions_pool = []
     co_descriptions = {}
     q_counter = 1
@@ -758,6 +999,7 @@ def hod_dashboard():
     
     # Get HOD stats
     stats = get_hod_stats(user.get('department'))
+    question_analysis = session.get('hod_question_paper_analysis')
     pending_papers = get_pending_papers(user.get('department'))
     pending_teachers = get_pending_teachers(user.get('department'))
     teachers = get_all_teachers(user.get('department')) or []
@@ -766,6 +1008,8 @@ def hod_dashboard():
         teacher_sections = get_teacher_sections(teacher.get('id')) or []
         teacher['subjects_count'] = len(teacher_subjects)
         teacher['sections_count'] = len(teacher_sections)
+        teacher['subjects'] = teacher_subjects
+        teacher['sections'] = teacher_sections
     section_catalog = get_section_catalog(user.get('department')) or []
     semester_options = sorted({str(s.get('semester')) for s in section_catalog if s.get('semester')}, key=lambda x: int(x) if x.isdigit() else 0)
     if not semester_options:
@@ -779,6 +1023,7 @@ def hod_dashboard():
                          section_catalog=section_catalog,
                          semester_options=semester_options,
                          pending_teachers=pending_teachers,
+                         question_analysis=question_analysis,
                          current_user=user,
                          show_navbar=True)
 
@@ -820,6 +1065,60 @@ def hod_staff_management():
                          section_catalog=section_catalog,
                          current_user=user,
                          show_navbar=True)
+
+@app.route('/hod/analyze-question-papers', methods=['POST'])
+@login_required
+@hod_required
+def analyze_previous_question_papers():
+    uploaded_files = request.files.getlist('question_papers')
+    top_n = int(request.form.get('top_n') or 10)
+
+    if not uploaded_files or not any(f and f.filename for f in uploaded_files):
+        flash('Please upload at least one PDF question paper.', 'error')
+        return redirect(url_for('hod_dashboard'))
+
+    all_questions = []
+    file_names = []
+    for file_obj in uploaded_files:
+        if not file_obj or not file_obj.filename:
+            continue
+        if not allowed_file(file_obj.filename):
+            flash(f"Unsupported file type: {file_obj.filename}", 'error')
+            return redirect(url_for('hod_dashboard'))
+
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf', dir=tempfile.gettempdir())
+        try:
+            file_obj.save(tmp.name)
+            tmp.close()
+            extracted = extract_questions_from_pdf(tmp.name)
+            pdf_text = "\n".join(page.get_text("text") for page in fitz.open(tmp.name)) if os.path.exists(tmp.name) else ''
+            context = infer_paper_context(file_obj.filename, pdf_text)
+            all_questions.extend([
+                {
+                    'question': item,
+                    'source': context,
+                } for item in extracted
+            ])
+            file_names.append(file_obj.filename)
+        finally:
+            try:
+                os.unlink(tmp.name)
+            except OSError:
+                pass
+
+    if not all_questions:
+        flash('No readable questions could be extracted from the uploaded PDFs.', 'warning')
+        return redirect(url_for('hod_dashboard'))
+
+    results = analyze_repeated_questions(all_questions, top_n=top_n)
+    session['hod_question_paper_analysis'] = {
+        'files': file_names,
+        'top_n': top_n,
+        'total_questions': len(all_questions),
+        'results': results,
+    }
+    flash(f'Analyzed {len(all_questions)} questions and found the most repeated ones.', 'success')
+    return redirect(url_for('hod_dashboard'))
 
 @app.route('/api/hod/approve-teacher/<teacher_id>', methods=['POST'])
 @login_required
@@ -1310,7 +1609,7 @@ def view_paper(paper_id):
         flash('Paper content not available for this record.', 'warning')
         return redirect(url_for('my_papers') if role in ['teacher', 'faculty'] else url_for('hod_history'))
     
-    # Attach signatures (now stored as Cloudinary URLs — pass directly to template)
+    # Attach signatures from local uploads — pass directly to template
     if paper.get('teacher_signature'):
         data['prepared_by_sig_encoded'] = paper.get('teacher_signature')
     if paper.get('status') == 'approved':
@@ -1850,7 +2149,7 @@ def generate_paper():
         teacher_sig_file = request.files.get('teacher_signature')
         teacher_sig_path = None
         if teacher_sig_file:
-            teacher_sig_path = save_uploaded_file(teacher_sig_file, 'signatures')
+            teacher_sig_path = cloud_storage.upload_file(teacher_sig_file, subfolder='signatures', resource_type='image')
             teacher_sig_file.seek(0)  # Reset file pointer
             form_data['teacher_sig_encoded'] = encode_image_to_base64(teacher_sig_file)
             form_data['prepared_by_sig_encoded'] = form_data.get('teacher_sig_encoded')
@@ -2163,6 +2462,11 @@ def parse_timetable_pdf(file_path, department, semester, section=None):
                     detected_sem = '2'
                 elif re.search(r'\b(IV|4)/8', full_table_text) or re.search(r'\b8(TH|RD|ND|ST)?\s*SEM', full_table_text) or re.search(r'\bSEM(ESTER)?\s*:?\s*8', full_table_text):
                     detected_sem = '8'
+
+                detected_section = None
+                section_match = re.search(rf'\b{re.escape(str(semester).strip())}\s*([A-Z])\b', full_table_text)
+                if section_match:
+                    detected_section = f"{str(semester).strip()}{section_match.group(1).upper()}"
                 
                 # Check if this is the timetable grid
                 has_days = any(day in ' '.join(first_col_values) for day in days_keywords)
@@ -2182,10 +2486,43 @@ def parse_timetable_pdf(file_path, department, semester, section=None):
                 if has_course_code or has_faculty:
                     if detected_sem and str(detected_sem) != str(semester):
                         return False, f"Semester Mismatch: PDF appears to be for Semester {detected_sem}, but you uploaded to Semester {semester}."
+                    if detected_section and section and detected_section != section:
+                        return False, f"Section Mismatch: PDF appears to be for Section {detected_section}, but you uploaded to Section {section}."
                         
                     faculty_table = extracted
                     print(f"Found faculty table: {tab.row_count} rows x {tab.col_count} cols")
             
+            faculty_by_code = {}
+            if faculty_table:
+                header = faculty_table[0] if faculty_table else []
+                code_idx = faculty_idx = name_idx = -1
+
+                for i, cell in enumerate(header):
+                    cell_upper = str(cell).upper() if cell else ''
+                    if 'CODE' in cell_upper:
+                        code_idx = i
+                    elif 'FACULTY' in cell_upper:
+                        faculty_idx = i
+                    elif 'COURSE' in cell_upper and 'NAME' in cell_upper:
+                        name_idx = i
+                    elif 'NAME' in cell_upper and name_idx == -1:
+                        name_idx = i
+
+                for row in faculty_table[1:]:
+                    if not row:
+                        continue
+                    first_cell = str(row[0]).strip() if row[0] else ''
+                    if not first_cell or first_cell == '-' or 'THEORY' in first_cell.upper() or 'LAB' in first_cell.upper():
+                        continue
+                    code = str(row[code_idx]).strip() if code_idx >= 0 and code_idx < len(row) and row[code_idx] else ''
+                    name = str(row[name_idx]).strip() if name_idx >= 0 and name_idx < len(row) and row[name_idx] else ''
+                    faculty = str(row[faculty_idx]).strip() if faculty_idx >= 0 and faculty_idx < len(row) and row[faculty_idx] else ''
+                    if not code and first_cell and re.match(r'^[A-Z]{2,4}\d{3,4}', first_cell):
+                        code = first_cell
+                    teacher_name = faculty or name
+                    if code and teacher_name:
+                        faculty_by_code[code.strip().upper()] = teacher_name.strip()
+
             # Parse timetable grid
             if timetable_grid:
                 # Build time-slot mapping by column from header rows
@@ -2240,6 +2577,14 @@ def parse_timetable_pdf(file_path, department, semester, section=None):
                         time_slot_by_col[col_idx] = start
                     elif end:
                         time_slot_by_col[col_idx] = end
+
+                def _normalize_noon_slot(slot_text):
+                    text = str(slot_text or '')
+                    text = re.sub(r'\b12:(\d{2})\s*AM\b', r'12:\1 PM', text, flags=re.IGNORECASE)
+                    return text
+
+                for col_idx, slot_text in list(time_slot_by_col.items()):
+                    time_slot_by_col[col_idx] = _normalize_noon_slot(slot_text)
                 
                 if not time_slot_by_col:
                     # Fallback: sequential slots if no times found
@@ -2247,6 +2592,7 @@ def parse_timetable_pdf(file_path, department, semester, section=None):
                         time_slot_by_col[col_idx] = f"Slot {col_idx}"
                 
                 time_cols_sorted = sorted(time_slot_by_col.keys())
+                first_time_col = min(time_cols_sorted) if time_cols_sorted else 1
                 
                 def _nearest_time_col(col_idx):
                     if col_idx in time_slot_by_col:
@@ -2269,6 +2615,8 @@ def parse_timetable_pdf(file_path, department, semester, section=None):
                             continue
                         text = str(cell).strip().replace('\n', ' ')
                         if re.search(r'(BREAK|LUNCH)', text, re.IGNORECASE):
+                            if col_idx < first_time_col:
+                                continue
                             break_text_by_col[col_idx] = text
 
                 # Parse each row with day names
@@ -2276,17 +2624,25 @@ def parse_timetable_pdf(file_path, department, semester, section=None):
                     if not row or not row[0]:
                         continue
                     
-                    first_cell = str(row[0]).strip().upper()
-                    
-                    # Check if this row starts with a day name
+                    # Check if the row contains a day name in the first few columns.
                     day_name = None
-                    for day in days_keywords:
-                        if day in first_cell:
-                            day_name = day[:3].title()  # Mon, Tue, Wed...
+                    day_col_idx = None
+                    for idx, cell in enumerate(row[:4]):
+                        cell_text = str(cell).strip().upper() if cell else ''
+                        for day in days_keywords:
+                            if day in cell_text:
+                                day_name = day[:3].title()
+                                day_col_idx = idx
+                                break
+                        if day_name:
                             break
                     
-                    if not day_name:
+                    if not day_name or day_col_idx is None:
                         continue
+
+                    start_col = day_col_idx + 1
+                    if start_col < first_time_col:
+                        start_col = first_time_col
                     
                     # Add breaks/lunch for every day using shared columns
                     for b_col, b_text in break_text_by_col.items():
@@ -2306,7 +2662,7 @@ def parse_timetable_pdf(file_path, department, semester, section=None):
                     last_valid_content = None
                     last_valid_col = None
                     
-                    for col_idx, cell in enumerate(row[1:], start=1):  # Skip first column (day)
+                    for col_idx, cell in enumerate(row[start_col:], start=start_col):
                         cell_text = ""
                         if cell is not None:
                             cell_text = str(cell).strip().replace('\n', ' ')
@@ -2314,6 +2670,8 @@ def parse_timetable_pdf(file_path, department, semester, section=None):
                         if col_idx not in time_slot_by_col:
                             # Allow break/lunch in non-time columns (map to nearest time)
                             if cell_text and re.search(r'(BREAK|LUNCH)', cell_text, re.IGNORECASE):
+                                if col_idx < first_time_col:
+                                    continue
                                 nearest_col = _nearest_time_col(col_idx)
                                 if nearest_col is not None:
                                     time_slot = time_slot_by_col.get(nearest_col)
@@ -2372,9 +2730,10 @@ def parse_timetable_pdf(file_path, department, semester, section=None):
                             subject_code = code_match.group(1)
                         
                         if content and len(content) > 1:
+                            teacher_name = faculty_by_code.get(subject_code.upper(), '') if subject_code else ''
                             key = (day_name, time_slot, content)
                             if key not in seen_entries:
-                                add_timetable_entry(department, semester, section, day_name, time_slot, content, subject_code, "")
+                                add_timetable_entry(department, semester, section, day_name, time_slot, content, teacher_name, "")
                                 parsed_count += 1
                                 seen_entries.add(key)
             
@@ -2437,6 +2796,8 @@ def parse_timetable_pdf(file_path, department, semester, section=None):
             full_details = json.dumps(details_table)
             update_timetable_details(department, semester, section, full_details)
             print(f"Stored {len(details_table)} faculty entries")
+        else:
+            update_timetable_details(department, semester, section, '[]')
         
         print(f"Timetable parsed: {parsed_count} entries")
         return True, f"Successfully parsed {parsed_count} entries."
@@ -2484,14 +2845,16 @@ def resolve_timetable_scope(user, department, semester, requested_section):
 
 def _build_timetable_payload(department, semester, section):
     """Build standard timetable payload for API responses."""
-    entries = get_timetable_entries(department, semester, section if section else None)
+    if not section:
+        return {'success': True, 'entries': [], 'details': '', 'section': ''}
+
+    entries = get_timetable_entries(department, semester, section)
     details = ""
     timetables = get_timetables(department)
-    if section:
-        for tt in timetables:
-            if str(tt.get('semester')) == str(semester) and str((tt.get('section') or '')).upper() == section:
-                details = tt.get('details') or ""
-                break
+    for tt in timetables:
+        if str(tt.get('semester')) == str(semester) and str((tt.get('section') or '')).upper() == section:
+            details = tt.get('details') or ""
+            break
     return {'success': True, 'entries': entries, 'details': details, 'section': section}
 
 @app.route('/api/timetable/<department>/<semester>')
@@ -2662,17 +3025,27 @@ def _allocate_benches(rooms, groups, seats_per_bench=3):
 
     queues = {g['name']: deque(g['rolls']) for g in groups}
     sem_by_group = {g['name']: g.get('semester') for g in groups}
+    branch_by_group = {g['name']: str(g.get('branch') or '').strip().upper() for g in groups}
+    section_by_group = {g['name']: str(g.get('section') or '').strip().upper() for g in groups}
     remaining = {g['name']: len(g['rolls']) for g in groups}
 
     def active_semesters():
         return {sem_by_group.get(g) for g, cnt in remaining.items() if cnt > 0 and sem_by_group.get(g)}
 
-    def pick_group(forbidden_sems):
+    def group_identity(group_name):
+        return (branch_by_group.get(group_name, ''), section_by_group.get(group_name, ''))
+
+    def pick_group(forbidden_sems, forbidden_keys):
         # Prefer a different semester whenever 2+ semesters are still available.
         active_sems = active_semesters()
         strict_alternate = len(active_sems) > 1
 
-        candidates = [g for g, cnt in remaining.items() if cnt > 0 and sem_by_group.get(g) not in forbidden_sems]
+        candidates = [
+            g for g, cnt in remaining.items()
+            if cnt > 0
+            and sem_by_group.get(g) not in forbidden_sems
+            and group_identity(g) not in forbidden_keys
+        ]
 
         if strict_alternate and candidates:
             # Pick semester with highest remaining load first for better balancing.
@@ -2704,25 +3077,29 @@ def _allocate_benches(rooms, groups, seats_per_bench=3):
             for r in range(rows):
                 bench_seats = []
                 for s in range(seats_per_bench):
-                    forbidden = set()
+                    forbidden_sems = set()
+                    forbidden_keys = set()
 
                     # Prevent adjacent same-sem in the same bench.
                     if s > 0 and bench_seats[s - 1]:
-                        forbidden.add(bench_seats[s - 1]['semester'])
+                        forbidden_sems.add(bench_seats[s - 1]['semester'])
+                        forbidden_keys.add(group_identity(bench_seats[s - 1]['group']))
 
                     # Prevent same-sem with left bench edge and bench directly above.
                     if c > 0:
                         left_bench = layout[r][c - 1]
                         left_edge = next((x for x in reversed(left_bench) if x), None)
                         if left_edge and left_edge.get('semester'):
-                            forbidden.add(left_edge['semester'])
+                            forbidden_sems.add(left_edge['semester'])
+                            forbidden_keys.add(group_identity(left_edge['group']))
                     if r > 0:
                         up_bench = layout[r - 1][c]
                         up_same_seat = up_bench[s] if s < len(up_bench) else None
                         if up_same_seat and up_same_seat.get('semester'):
-                            forbidden.add(up_same_seat['semester'])
+                            forbidden_sems.add(up_same_seat['semester'])
+                            forbidden_keys.add(group_identity(up_same_seat['group']))
 
-                    group = pick_group(forbidden)
+                    group = pick_group(forbidden_sems, forbidden_keys)
                     if not group:
                         bench_seats.append(None)
                         continue
@@ -2778,7 +3155,7 @@ def upload_timetable():
 
         import tempfile
         filename = secure_filename(file.filename)
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf', dir='/tmp')
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf', dir=tempfile.gettempdir())
         file.save(tmp.name)
         tmp.close()
         tmp_path = tmp.name
@@ -2787,7 +3164,7 @@ def upload_timetable():
             # Parse first (so user gets immediate feedback if it fails)
             success, msg = parse_timetable_pdf(tmp_path, department, semester, section)
 
-            # Upload to Cloudinary
+            # Store locally
             with open(tmp_path, 'rb') as f:
                 save_name = f"{department}_{semester}_{section}_{int(datetime.now().timestamp())}_{filename}"
                 file_url = cloud_storage.upload_bytes(f.read(), filename=save_name, subfolder='timetables', resource_type='auto')
@@ -2824,7 +3201,7 @@ def upload_calendar():
 
         import tempfile
         filename = secure_filename(file.filename)
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf', dir='/tmp')
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf', dir=tempfile.gettempdir())
         file.save(tmp.name)
         tmp.close()
         tmp_path = tmp.name
@@ -2867,8 +3244,8 @@ def bench_allotment():
             {'room': '203', 'rows': 5, 'cols': 4},
         ]
         groups = [
-            {'name': 'Sem 6 - CS', 'semester': '6', 'prefix': '1GD23CS', 'rolls_raw': '001-060', 'pad_len': '3'},
-            {'name': 'Sem 6 - EC', 'semester': '6', 'prefix': '1GD23EC', 'rolls_raw': '001-045', 'pad_len': '3'}
+            {'name': 'Sem 6 - CS - A', 'semester': '6', 'branch': 'CS', 'section': 'A', 'prefix': '1GD23CS', 'rolls_raw': '001-060', 'pad_len': '3'},
+            {'name': 'Sem 6 - CS - B', 'semester': '6', 'branch': 'CS', 'section': 'B', 'prefix': '1GD23CS', 'rolls_raw': '001-045', 'pad_len': '3'}
         ]
         return render_template(
             'bench_allotment.html',
@@ -2897,6 +3274,8 @@ def bench_allotment():
 
     group_names = request.form.getlist('group_name[]')
     group_semesters = request.form.getlist('group_semester[]')
+    group_branches = request.form.getlist('group_branch[]')
+    group_sections = request.form.getlist('group_section[]')
     group_prefixes = request.form.getlist('group_prefix[]')
     group_rolls = request.form.getlist('group_rolls[]')
     group_pad = request.form.getlist('group_pad[]')
@@ -2914,6 +3293,8 @@ def bench_allotment():
         groups.append({
             'name': label,
             'semester': sem,
+            'branch': (group_branches[idx] or '').strip().upper(),
+            'section': (group_sections[idx] or '').strip().upper(),
             'prefix': prefix,
             'rolls_raw': rolls_raw,
             'pad_len': pad_len,
@@ -2926,7 +3307,7 @@ def bench_allotment():
             'bench_allotment.html',
             user=user,
             rooms=[{'room': '203', 'rows': 5, 'cols': 4}],
-            groups=groups if groups else [{'name': 'Sem 6 - CS', 'semester': '6', 'prefix': '1GD23CS', 'rolls_raw': '', 'pad_len': '3'}],
+            groups=groups if groups else [{'name': 'Sem 6 - CS', 'semester': '6', 'branch': 'CS', 'section': 'A', 'prefix': '1GD23CS', 'rolls_raw': '', 'pad_len': '3'}],
             seats_per_bench=seats_per_bench,
             result=None
         )
@@ -2936,7 +3317,7 @@ def bench_allotment():
             'bench_allotment.html',
             user=user,
             rooms=rooms,
-            groups=[{'name': 'Sem 6 - CS', 'semester': '6', 'prefix': '1GD23CS', 'rolls_raw': '', 'pad_len': '3'}],
+            groups=[{'name': 'Sem 6 - CS', 'semester': '6', 'branch': 'CS', 'section': 'A', 'prefix': '1GD23CS', 'rolls_raw': '', 'pad_len': '3'}],
             seats_per_bench=seats_per_bench,
             result=None
         )

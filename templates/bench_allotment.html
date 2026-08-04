@@ -49,6 +49,8 @@
                 <div class="stack-row group-row">
                     <input class="form-input" name="group_name[]" placeholder="Group name (Sem 6 - CS)" value="{{ g.name }}">
                     <input class="form-input" name="group_semester[]" placeholder="Semester (6)" value="{{ g.semester }}">
+                    <input class="form-input" name="group_branch[]" placeholder="Branch (CS)" value="{{ g.branch }}">
+                    <input class="form-input" name="group_section[]" placeholder="Section (A)" value="{{ g.section }}">
                     <input class="form-input" name="group_prefix[]" placeholder="Prefix (1GD23CS)" value="{{ g.prefix }}">
                     <input class="form-input" name="group_rolls[]" placeholder="Rolls (001-060, 071, 072)" value="{{ g.rolls_raw }}">
                     <input class="form-input" name="group_pad[]" type="number" min="0" max="6" placeholder="Pad" value="{{ g.pad_len }}">
@@ -174,7 +176,7 @@
         padding: 10px;
     }
     .room-row { grid-template-columns: 1.3fr 1fr 1fr auto; }
-    .group-row { grid-template-columns: 1.3fr .8fr 1fr 1.7fr .6fr auto; }
+    .group-row { grid-template-columns: 1.2fr .7fr .8fr .7fr 1fr 1.6fr .6fr auto; }
 
     .meta-strip { display:flex; gap:8px; flex-wrap:wrap; }
     .meta-chip { padding: 6px 10px; border-radius: 999px; font-size:.8rem; font-weight:700; }
