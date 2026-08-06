@@ -608,6 +608,14 @@
         font-weight: 600;
     }
 
+    .timetable-grid .cell-teacher {
+        margin-top: 4px;
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+        font-weight: 500;
+        line-height: 1.2;
+    }
+
     .timetable-grid td.empty-cell {
         color: var(--text-secondary);
         background: var(--glass-bg);
@@ -750,14 +758,15 @@
     }
 
     function populateSectionOptions() {
-        const sem = document.getElementById('sem-select').value;
+        const sem = document.getElementById('sem-select')?.value || '';
         const sectionSelect = document.getElementById('section-select');
         if (!sectionSelect) return;
-        const previous = sectionSelect.value;
+        const previous = sectionSelect.value || '';
         const options = sectionsBySemester[sem] || [];
         sectionSelect.innerHTML = '';
         if (options.length === 0) {
             sectionSelect.innerHTML = '<option value="">No Sections</option>';
+            sectionSelect.value = '';
             return;
         }
         let selectedFromInitial = false;
@@ -817,15 +826,20 @@
 
     // --- Timetable Logic ---
     async function loadTimetable() {
-        const sem = document.getElementById('sem-select').value;
+        const semSelect = document.getElementById('sem-select');
+        const sem = semSelect?.value || currentSemester || '';
         const section = (document.getElementById('section-select')?.value || '').trim();
         currentSemester = sem;
         const tbody = document.getElementById('timetable-body');
         const table = document.getElementById('timetable-table');
         const detailsSection = document.getElementById('timetable-details-section');
 
-        tbody.innerHTML = '<tr><td colspan="8" style="padding: 32px; text-align: center;">Loading...</td></tr>';
-        detailsSection.style.display = 'none';
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="8" style="padding: 32px; text-align: center;">Loading...</td></tr>';
+        }
+        if (detailsSection) {
+            detailsSection.style.display = 'none';
+        }
 
         if (!section) {
             table.innerHTML = `<tbody id="timetable-body"><tr><td colspan="8" style="padding: 32px; text-align: center; color: var(--text-secondary);">No section configured for Semester ${sem}. Ask HOD to add section-wise timetable.</td></tr></tbody>`;
@@ -862,7 +876,15 @@
     function renderDetailsTable(detailsJson) {
         const tbody = document.getElementById('details-tbody');
         try {
-            const details = JSON.parse(detailsJson);
+            let details = [];
+            if (detailsJson) {
+                const parsed = typeof detailsJson === 'string' ? JSON.parse(detailsJson) : detailsJson;
+                if (Array.isArray(parsed)) {
+                    details = parsed;
+                } else if (parsed && typeof parsed === 'object') {
+                    details = Array.isArray(parsed.details) ? parsed.details : [parsed];
+                }
+            }
             if (!details || details.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-secondary);">No faculty details available</td></tr>';
                 return;
@@ -929,17 +951,22 @@
 
             let html = '';
             details.forEach(item => {
+                const code = item?.code || item?.subject_code || '-';
+                const name = item?.name || item?.teacher_name || item?.faculty_name || item?.faculty || '-';
+                const faculty = item?.faculty || item?.teacher_name || item?.name || '-';
+                const designation = item?.designation || item?.desig || item?.role || '-';
+                const credits = item?.credits || item?.hours || item?.load || '-';
                 html += `
                     <tr>
-                        <td><span class="code-badge">${item.code || '-'}</span></td>
-                        <td>${renderSplitLines(item.name || '-')}</td>
-                        <td>${renderSplitLines(item.faculty || '-', true)}</td>
+                        <td><span class="code-badge">${code}</span></td>
+                        <td>${renderSplitLines(name)}</td>
+                        <td>${renderSplitLines(faculty, true)}</td>
                         <td>${(() => {
-                            const parts = splitDesignation(item.designation || '');
+                            const parts = splitDesignation(designation);
                             if (parts.length === 1 && parts[0] === '-') return '-';
                             return parts.map(p => `<div class="split-line"><span class="designation-badge">${p}</span></div>`).join('');
                         })()}</td>
-                        <td>${item.credits || '-'}</td>
+                        <td>${credits}</td>
                     </tr>
                 `;
             });
@@ -954,6 +981,14 @@
         const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
         const normalize = (s) => (s || '').toString().trim();
+        const cellText = (cell) => {
+            if (cell && typeof cell === 'object') return normalize(cell.subject || cell.text || '');
+            return normalize(cell);
+        };
+        const cellTeacher = (cell) => {
+            if (cell && typeof cell === 'object') return normalize(cell.teacher_name || cell.teacher || '');
+            return '';
+        };
         const isBreak = (s) => /BREAK|LUNCH/i.test(s || '');
         const isLab = (s) => /LAB/i.test(s || '');
         const splitMulti = (val) => {
@@ -1054,7 +1089,7 @@
         // 2) Build a grid day x slot
         const grid = {};
         days.forEach(day => {
-            grid[day] = slots.map(() => '');
+            grid[day] = slots.map(() => null);
         });
 
         // Detect break/lunch slots from any entries
@@ -1072,7 +1107,10 @@
             const slotIdx = slots.indexOf(e.time_slot);
             if (slotIdx === -1) return;
             if (!grid[dayKey][slotIdx]) {
-                grid[dayKey][slotIdx] = e.subject || '';
+                grid[dayKey][slotIdx] = {
+                    subject: e.subject || '',
+                    teacher_name: e.teacher_name || ''
+                };
             }
         });
 
@@ -1081,7 +1119,7 @@
             const idx = slots.indexOf(slot);
             if (idx === -1) return;
             days.forEach(day => {
-                grid[day][idx] = breakLabelBySlot[slot];
+                grid[day][idx] = { subject: breakLabelBySlot[slot], teacher_name: '' };
             });
         });
 
@@ -1093,9 +1131,9 @@
                 verticalMerge.add(idx);
                 return;
             }
-            const first = normalize(grid[days[0]][idx]);
+            const first = cellText(grid[days[0]][idx]);
             if (!first || !isBreak(first)) return;
-            const allSame = days.every(d => normalize(grid[d][idx]).toLowerCase() === first.toLowerCase());
+            const allSame = days.every(d => cellText(grid[d][idx]).toLowerCase() === first.toLowerCase());
             if (allSame) verticalMerge.add(idx);
         });
 
@@ -1115,14 +1153,15 @@
             while (col < slots.length) {
                 if (verticalMerge.has(col)) {
                     if (rowIdx === 0) {
-                        const content = normalize(grid[day][col]) || 'BREAK';
+                        const content = cellText(grid[day][col]) || 'BREAK';
                         tbody += `<td rowspan="${days.length}" class="break-cell"><span class="break-text">${content}</span></td>`;
                     }
                     col += 1;
                     continue;
                 }
 
-                const subject = normalize(grid[day][col]);
+                const cell = grid[day][col];
+                const subject = cellText(cell);
                 if (!subject) {
                     tbody += '<td class="empty-cell">-</td>';
                     col += 1;
@@ -1132,7 +1171,7 @@
                 // Horizontal merge for repeated subjects across adjacent slots
                 let span = 1;
                 while (col + span < slots.length && !verticalMerge.has(col + span)) {
-                    const next = normalize(grid[day][col + span]);
+                    const next = cellText(grid[day][col + span]);
                     if (!next || next.toLowerCase() !== subject.toLowerCase()) break;
                     span += 1;
                 }
@@ -1140,7 +1179,9 @@
                 const isBreakCell = isBreak(subject);
                 const cls = isBreakCell ? 'break-cell' : (isLab(subject) ? 'lab-cell' : 'class-cell');
                 const colspan = span > 1 ? ` colspan="${span}"` : '';
-                const cellInner = isBreakCell ? `<span class="break-text">${subject}</span>` : formatSplitCell(subject);
+                const teacherName = cellTeacher(cell);
+                const teacherHtml = teacherName ? `<div class="cell-teacher">${teacherName}</div>` : '';
+                const cellInner = isBreakCell ? `<span class="break-text">${subject}</span>` : `${formatSplitCell(subject)}${teacherHtml}`;
                 tbody += `<td${colspan} class="${cls}">${cellInner}</td>`;
                 col += span;
             }

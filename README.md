@@ -47,14 +47,17 @@ A Flask-based academic workflow app for generating question papers, managing app
 pip install -r requirements.txt
 ```
 
-### 2) Configure Firebase Auth
+### 2) Configure environment variables
+Create a local `.env` file with the provided Firebase keys, secret key, and SQLite path. The app uses `paper_generator.db` locally.
+
+### 3) Configure Firebase Auth
 Firebase config is in:
 ```
 static/js/firebase-auth.js
 ```
 Replace with your Firebase project values if needed.
 
-### 3) Run the app
+### 4) Run the app
 ```bash
 python app.py
 ```
