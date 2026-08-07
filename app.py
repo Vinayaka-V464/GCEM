@@ -3446,5 +3446,27 @@ def hod_my_papers():
                          current_user=user,
                          show_navbar=True)
 
+# ── NEW: Teacher Examination Duty Allotment ──────────────────────────────────
+@app.route('/hod/teacher-duty')
+@login_required
+@hod_required
+def hod_teacher_duty():
+    user = session.get('user') or {}
+    return render_template('hod_teacher_duty.html',
+                           user=user,
+                           current_user=user,
+                           show_navbar=True)
+
+# ── NEW: Student Smart Bench Allotment ───────────────────────────────────────
+@app.route('/hod/smart-bench')
+@login_required
+@hod_required
+def hod_smart_bench():
+    user = session.get('user') or {}
+    return render_template('hod_smart_bench.html',
+                           user=user,
+                           current_user=user,
+                           show_navbar=True)
+
 if __name__ == '__main__':
     app.run(debug=True, port=8080)

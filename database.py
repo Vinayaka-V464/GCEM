@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # ==============================================================================
 # FILE: database.py
 # Dual-mode: SQLite for local dev, PostgreSQL (Neon) for production.
@@ -6,15 +5,6 @@
 # ==============================================================================
 
 import os
-=======
-# ============================================================================== 
-# FILE: database.py - SQLite Database for Paper Generator
-# ==============================================================================
-
-import os
-import sqlite3
-from datetime import datetime
->>>>>>> c118399cc61639c2df6384868e45d2756d507ba7
 import json
 from datetime import datetime
 
@@ -25,40 +15,8 @@ try:
 except ImportError:
     pass
 
-<<<<<<< HEAD
 DATABASE_URL = os.environ.get('DATABASE_URL', '').strip()
 _USE_PG = bool(DATABASE_URL)  # True → PostgreSQL, False → SQLite
-=======
-def _resolve_db_path():
-    database_url = os.environ.get('DATABASE_URL', '').strip()
-    database_path = os.environ.get('DATABASE_PATH', '').strip()
-    candidate = database_path or database_url or 'paper_generator.db'
-    if candidate.startswith('sqlite:///'):
-        return candidate.replace('sqlite:///', '', 1)
-    if '://' in candidate:
-        raise RuntimeError('Only local SQLite database paths are supported.')
-    return candidate
-
-
-DB_PATH = _resolve_db_path()
-
-
-def _translate_sql(query):
-    return query.replace('%s', '?')
-
-
-class SQLiteCursor(sqlite3.Cursor):
-    def execute(self, query, parameters=None):
-        return super().execute(_translate_sql(query), parameters if parameters is not None else ())
-
-    def executemany(self, query, seq_of_parameters):
-        return super().executemany(_translate_sql(query), seq_of_parameters)
-
-
-class SQLiteConnection(sqlite3.Connection):
-    def cursor(self, factory=SQLiteCursor):
-        return super().cursor(factory)
->>>>>>> c118399cc61639c2df6384868e45d2756d507ba7
 
 if _USE_PG:
     import psycopg2
@@ -74,7 +32,6 @@ else:
 # ---------------------------------------------------------------------------
 
 def get_db():
-<<<<<<< HEAD
     """Return a DB connection.  Rows are always accessible as dicts."""
     if _USE_PG:
         conn = psycopg2.connect(DATABASE_URL,
@@ -125,22 +82,6 @@ def _execute_returning(cursor, sql, params=()):
 # init_db
 # ---------------------------------------------------------------------------
 
-=======
-    """Get a SQLite connection with row access compatible with dict-like code."""
-    conn = sqlite3.connect(DB_PATH, factory=SQLiteConnection)
-    conn.row_factory = sqlite3.Row
-    conn.execute('PRAGMA foreign_keys = ON')
-    return conn
-
-
-def _ensure_column(conn, table_name, column_definition):
-    column_name = column_definition.split()[0]
-    existing_columns = {row['name'] for row in conn.execute(f'PRAGMA table_info({table_name})')}
-    if column_name not in existing_columns:
-        conn.execute(f'ALTER TABLE {table_name} ADD COLUMN {column_definition}')
-
-
->>>>>>> c118399cc61639c2df6384868e45d2756d507ba7
 def init_db():
     """Create all tables (idempotent)."""
     conn = get_db()
@@ -311,7 +252,6 @@ def init_db():
         )
     '''))
 
-<<<<<<< HEAD
     # Safe column additions (PostgreSQL supports IF NOT EXISTS natively;
     # SQLite 3.37+ does too — we catch errors silently for older SQLite)
     safe_alters = [
@@ -333,24 +273,6 @@ def init_db():
             cur.execute(_fix(stmt))
         except Exception:
             pass  # column already exists on older SQLite
-=======
-    # Add any missing columns safely for older databases.
-    for table_name, column_definition in [
-        ('users', 'principal_signature_path TEXT'),
-        ('users', 'phone TEXT'),
-        ('users', 'profile_complete INTEGER DEFAULT 0'),
-        ('users', 'approved_by_hod INTEGER DEFAULT 0'),
-        ('users', 'semester TEXT'),
-        ('users', 'section TEXT'),
-        ('timetables', 'details TEXT'),
-        ('timetables', 'section TEXT'),
-        ('papers', 'principal_signature TEXT'),
-        ('events', "type TEXT DEFAULT 'event'"),
-        ('events', 'semester TEXT'),
-        ('timetable_entries', 'section TEXT'),
-    ]:
-        _ensure_column(conn, table_name, column_definition)
->>>>>>> c118399cc61639c2df6384868e45d2756d507ba7
 
     conn.commit()
     conn.close()
@@ -582,7 +504,6 @@ def replace_teacher_assignments(from_teacher_id, to_teacher_id):
 def create_paper(teacher_id, title, course_code, course_name, department,
                  paper_data, pdf_path=None, teacher_signature=None, status='draft'):
     conn = get_db()
-<<<<<<< HEAD
     cur = conn.cursor()
     new_id = _execute_returning(cur, '''
         INSERT INTO papers
@@ -591,16 +512,6 @@ def create_paper(teacher_id, title, course_code, course_name, department,
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
     ''', (teacher_id, title, course_code, course_name, department,
           json.dumps(paper_data), pdf_path, teacher_signature, status))
-=======
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO papers (teacher_id, title, course_code, course_name, department,
-                       paper_data, pdf_path, teacher_signature, status)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-    ''', (teacher_id, title, course_code, course_name, department,
-          json.dumps(paper_data), pdf_path, teacher_signature, status))
-    paper_id = cursor.lastrowid
->>>>>>> c118399cc61639c2df6384868e45d2756d507ba7
     conn.commit()
     conn.close()
     return new_id
@@ -816,14 +727,8 @@ def create_note(teacher_id, title, subject, department, file_path, file_name):
     cur = conn.cursor()
     new_id = _execute_returning(cur, '''
         INSERT INTO notes (teacher_id, title, subject, department, file_path, file_name)
-<<<<<<< HEAD
         VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
     ''', (teacher_id, title, subject, department, file_path, file_name))
-=======
-        VALUES (%s, %s, %s, %s, %s, %s)
-    ''', (teacher_id, title, subject, department, file_path, file_name))
-    note_id = cursor.lastrowid
->>>>>>> c118399cc61639c2df6384868e45d2756d507ba7
     conn.commit()
     conn.close()
     return new_id
@@ -859,14 +764,8 @@ def create_question_bank(teacher_id, title, subject, department, file_path, file
     cur = conn.cursor()
     new_id = _execute_returning(cur, '''
         INSERT INTO question_bank (teacher_id, title, subject, department, file_path, file_name)
-<<<<<<< HEAD
         VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
     ''', (teacher_id, title, subject, department, file_path, file_name))
-=======
-        VALUES (%s, %s, %s, %s, %s, %s)
-    ''', (teacher_id, title, subject, department, file_path, file_name))
-    qb_id = cursor.lastrowid
->>>>>>> c118399cc61639c2df6384868e45d2756d507ba7
     conn.commit()
     conn.close()
     return new_id
@@ -897,7 +796,6 @@ def get_question_banks_by_ids(qb_ids):
     if not qb_ids:
         return []
     conn = get_db()
-<<<<<<< HEAD
     cur = conn.cursor()
     if _USE_PG:
         cur.execute('SELECT * FROM question_bank WHERE id = ANY(%s) ORDER BY id', (list(qb_ids),))
@@ -905,12 +803,6 @@ def get_question_banks_by_ids(qb_ids):
         placeholders = ','.join('?' * len(qb_ids))
         cur.execute(f'SELECT * FROM question_bank WHERE id IN ({placeholders}) ORDER BY id', list(qb_ids))
     rows = [_row(r) for r in cur.fetchall()]
-=======
-    cursor = conn.cursor()
-    placeholders = ', '.join(['?'] * len(qb_ids))
-    cursor.execute(f'SELECT * FROM question_bank WHERE id IN ({placeholders}) ORDER BY id', list(qb_ids))
-    qbs = cursor.fetchall()
->>>>>>> c118399cc61639c2df6384868e45d2756d507ba7
     conn.close()
     return rows
 
@@ -924,14 +816,8 @@ def create_timetable(department, semester, section, title, file_path, file_name,
     cur = conn.cursor()
     new_id = _execute_returning(cur, '''
         INSERT INTO timetables (department, semester, section, title, file_path, file_name, details)
-<<<<<<< HEAD
         VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id
     ''', (department, semester, section, title, file_path, file_name, details))
-=======
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
-    ''', (department, semester, section, title, file_path, file_name, details))
-    tt_id = cursor.lastrowid
->>>>>>> c118399cc61639c2df6384868e45d2756d507ba7
     conn.commit()
     conn.close()
     return new_id
@@ -1016,7 +902,6 @@ def get_timetable_entries(department, semester, section=None):
 def create_event(title, description, event_date, event_time=None, location=None,
                  department=None, semester=None, event_type='event'):
     conn = get_db()
-<<<<<<< HEAD
     cur = conn.cursor()
     new_id = _execute_returning(cur, '''
         INSERT INTO events (title, description, event_date, event_time, location,
@@ -1024,14 +909,6 @@ def create_event(title, description, event_date, event_time=None, location=None,
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
     ''', (title, description, event_date, event_time, location, department,
           str(semester) if semester is not None else None, event_type))
-=======
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO events (title, description, event_date, event_time, location, department, semester, type)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-    ''', (title, description, event_date, event_time, location, department, str(semester) if semester is not None else None, event_type))
-    event_id = cursor.lastrowid
->>>>>>> c118399cc61639c2df6384868e45d2756d507ba7
     conn.commit()
     conn.close()
     return new_id

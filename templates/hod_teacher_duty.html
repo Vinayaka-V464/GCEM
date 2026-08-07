@@ -1,0 +1,495 @@
+{% extends "base.html" %}
+{% block title %}Teacher Duty Allotment - HOD Dashboard{% endblock %}
+{% set show_navbar = true %}
+
+{% block head %}
+{{ super() }}
+<style>
+.td-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:16px; margin-bottom:28px; }
+.td-stat { background:var(--glass-card-bg); border:1px solid var(--glass-card-border); border-radius:var(--radius-lg); padding:20px; text-align:center; backdrop-filter:blur(var(--glass-blur)); }
+.td-stat-val { font-family:var(--font-heading); font-size:2.2rem; font-weight:700; color:var(--green-primary); }
+.td-stat-lbl { font-size:.8rem; color:var(--text-secondary); font-weight:500; margin-top:4px; }
+.td-controls { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:18px; }
+.td-controls .form-input { width:auto; min-width:160px; }
+.duty-table-wrap { overflow-x:auto; }
+.duty-table { width:100%; border-collapse:collapse; font-size:.9rem; }
+.duty-table th { padding:12px 14px; text-align:left; font-weight:600; color:var(--text-secondary); font-size:.8rem; border-bottom:2px solid var(--glass-card-border); white-space:nowrap; }
+.duty-table td { padding:11px 14px; border-bottom:1px solid var(--glass-card-border); vertical-align:middle; }
+.duty-table tbody tr:hover { background:var(--glass-bg); }
+.badge-assigned { background:var(--green-bg); color:var(--green-primary); }
+.badge-avail { background:var(--status-info-bg); color:var(--status-info-text); }
+.badge-none { background:var(--status-danger-bg); color:var(--status-danger-text); }
+.badge-free { background:var(--orange-light); color:var(--brown); }
+.period-grid { display:flex; gap:4px; flex-wrap:nowrap; }
+.period-box { width:22px; height:22px; border-radius:5px; display:flex; align-items:center; justify-content:center; font-size:.6rem; font-weight:700; }
+.p-class { background:var(--status-info-bg); color:var(--status-info-text); }
+.p-lab { background:var(--orange-light); color:var(--brown); }
+.p-free { background:var(--green-bg); color:var(--green-primary); }
+.exam-card { background:var(--glass-card-bg); border:1px solid var(--glass-card-border); border-radius:var(--radius-md); padding:14px 18px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; backdrop-filter:blur(var(--glass-blur)); }
+.exam-card-info { display:flex; gap:16px; flex-wrap:wrap; align-items:center; }
+.exam-pill { padding:5px 12px; border-radius:999px; font-size:.78rem; font-weight:600; background:var(--glass-bg); border:1px solid var(--glass-card-border); }
+.timetable-modal { position:fixed; inset:0; background:rgba(15,17,13,.4); display:none; align-items:center; justify-content:center; z-index:999; padding:16px; }
+.timetable-modal.show { display:flex; }
+.timetable-modal-card { background:var(--glass-card-bg); border:1px solid var(--glass-card-border); border-radius:var(--radius-lg); padding:24px; width:100%; max-width:900px; max-height:90vh; overflow-y:auto; backdrop-filter:blur(var(--glass-blur)); position:relative; box-shadow:var(--glass-card-shadow); }
+.tt-grid { display:grid; grid-template-columns:80px repeat(8,1fr); gap:4px; font-size:.75rem; margin-top:12px; }
+.tt-head { font-weight:700; text-align:center; padding:6px 2px; background:var(--glass-bg); border-radius:6px; }
+.tt-cell { text-align:center; padding:5px 2px; border-radius:6px; }
+.empty-duty { text-align:center; padding:56px 20px; color:var(--text-secondary); }
+.section-divider { border:0; border-top:1px solid var(--glass-card-border); margin:24px 0; }
+.workload-bar { height:6px; border-radius:999px; background:var(--glass-card-border); overflow:hidden; margin-top:4px; }
+.workload-fill { height:100%; border-radius:999px; background:var(--green-primary); transition:width .4s ease; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+ <div class="container">
+
+  <div class="dashboard-header fade-in">
+   <a href="/hod/dashboard" class="btn btn-outline" style="padding:8px 18px;font-size:.85rem;margin-bottom:12px;">← Back to Dashboard</a>
+   <div class="section-label">HOD Tools</div>
+   <h1 class="h1">Teacher Examination Duty Allotment</h1>
+   <p class="text-muted" style="font-size:1.05rem;">Auto-assign invigilation duties to teachers with free periods. All data is mock — no database used.</p>
+  </div>
+
+  <!-- Stats -->
+  <div class="td-stats fade-in" id="statsRow">
+   <div class="td-stat"><div class="stat-icon">👩‍🏫</div><div class="td-stat-val" id="statTeachers">20</div><div class="td-stat-lbl">Total Teachers</div></div>
+   <div class="td-stat"><div class="stat-icon">📅</div><div class="td-stat-val" id="statExams">0</div><div class="td-stat-lbl">Today's Exams</div></div>
+   <div class="td-stat"><div class="stat-icon">✅</div><div class="td-stat-val" id="statAvail">0</div><div class="td-stat-lbl">Teachers Available</div></div>
+   <div class="td-stat"><div class="stat-icon">📋</div><div class="td-stat-val" id="statAssigned">0</div><div class="td-stat-lbl">Duties Assigned</div></div>
+  </div>
+
+  <!-- Controls -->
+  <div class="card fade-in" style="animation-delay:.1s;">
+   <div class="section-label">Controls</div>
+   <div class="td-controls">
+    <button class="btn btn-primary" id="btnGenerate" onclick="generateDuties()">⚡ Generate Invigilation Duty</button>
+    <button class="btn btn-outline" onclick="resetDuties()">🔄 Reset</button>
+    <button class="btn btn-secondary" onclick="exportPDF()">📄 Export PDF</button>
+    <button class="btn btn-outline" onclick="exportExcel()">📊 Export Excel</button>
+   </div>
+   <hr class="section-divider">
+   <div class="td-controls">
+    <input class="form-input" type="text" id="searchInput" placeholder="🔍 Search teacher…" oninput="applyFilters()">
+    <select class="form-input" id="filterDept" onchange="applyFilters()">
+     <option value="">All Departments</option>
+     <option>CSE</option><option>ISE</option><option>ECE</option><option>AE</option><option>ME</option><option>CV</option>
+    </select>
+    <input class="form-input" type="date" id="filterDate" onchange="applyFilters()">
+    <select class="form-input" id="filterStatus" onchange="applyFilters()">
+     <option value="">All Statuses</option>
+     <option value="Assigned">Assigned</option>
+     <option value="Available">Available</option>
+     <option value="No Teacher">No Teacher</option>
+    </select>
+   </div>
+  </div>
+
+
+  <!-- Exam Schedule Preview -->
+  <div class="card fade-in mt-3" style="animation-delay:.15s;">
+   <div class="section-label">Examination Schedule (Mock)</div>
+   <h3 class="h4 mb-3" style="color:var(--green-primary);">Upcoming Examination Sessions</h3>
+   <div id="examScheduleList"></div>
+  </div>
+
+  <!-- Duty Table -->
+  <div class="card fade-in mt-3" style="animation-delay:.2s;" id="dutyTableCard">
+   <div class="section-label">Duty Allotment Table</div>
+   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+    <h3 class="h4" style="color:var(--green-primary);">Invigilation Assignments</h3>
+    <span class="badge badge-neutral" id="rowCount">0 records</span>
+   </div>
+   <div class="duty-table-wrap">
+    <table class="duty-table" id="dutyTable">
+     <thead>
+      <tr>
+       <th>#</th>
+       <th>Teacher</th>
+       <th>Department</th>
+       <th>Exam / Subject</th>
+       <th>Room</th>
+       <th>Date</th>
+       <th>Time Slot</th>
+       <th>Workload</th>
+       <th>Free Periods</th>
+       <th>Status</th>
+      </tr>
+     </thead>
+     <tbody id="dutyTableBody">
+      <tr><td colspan="10"><div class="empty-duty">🎯 Click <strong>Generate Invigilation Duty</strong> to auto-assign teachers.</div></td></tr>
+     </tbody>
+    </table>
+   </div>
+  </div>
+
+  <!-- Timetable Viewer Modal -->
+  <div class="timetable-modal" id="ttModal">
+   <div class="timetable-modal-card">
+    <button style="position:absolute;top:12px;right:14px;border:none;background:var(--glass-bg);border-radius:50%;width:30px;height:30px;cursor:pointer;font-size:1rem;" onclick="closeTTModal()">✕</button>
+    <div class="section-label">Teacher Timetable</div>
+    <h3 class="h4" id="ttModalTitle" style="color:var(--green-primary);margin-bottom:4px;"></h3>
+    <p class="text-muted" style="font-size:.85rem;margin-bottom:10px;" id="ttModalDept"></p>
+    <div class="tt-grid" id="ttGrid"></div>
+    <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;">
+     <span class="badge p-class" style="border-radius:6px;">CLASS</span>
+     <span class="badge p-lab" style="border-radius:6px;">LAB</span>
+     <span class="badge p-free" style="border-radius:6px;">FREE</span>
+    </div>
+   </div>
+  </div>
+
+ </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ─────────────────────────────────────────────
+// MOCK DATA
+// ─────────────────────────────────────────────
+const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat'];
+const PERIOD_TYPES = ['CLASS','CLASS','CLASS','LAB','LAB','FREE','FREE','CLASS'];
+
+function seededRand(seed){
+  let s = seed;
+  return function(){
+    s = (s*9301+49297)%233280;
+    return s/233280;
+  };
+}
+
+function randItem(arr, rng){ return arr[Math.floor(rng()*arr.length)]; }
+
+function buildTimetable(teacherId){
+  const rng = seededRand(teacherId*997+13);
+  const tt = {};
+  DAYS.forEach(day=>{
+    tt[day] = [];
+    for(let p=0;p<8;p++){
+      const roll = rng();
+      let type = 'CLASS';
+      if(roll < 0.28) type = 'FREE';
+      else if(roll < 0.45) type = 'LAB';
+      // ensure not all free
+      tt[day].push(type);
+    }
+    // guarantee at least 2 busy per day
+    const freeCount = tt[day].filter(x=>x==='FREE').length;
+    if(freeCount >= 7){
+      tt[day][0] = 'CLASS';
+      tt[day][1] = 'CLASS';
+    }
+  });
+  return tt;
+}
+
+const FIRST_NAMES = ['Ananya','Rahul','Priya','Kiran','Suresh','Meena','Vijay','Lakshmi','Arun','Deepa','Ravi','Kavya','Mohan','Shreya','Arjun','Nandini','Sanjay','Pooja','Rajesh','Divya'];
+const LAST_NAMES  = ['Kumar','Sharma','Reddy','Naik','Rao','Patel','Verma','Singh','Joshi','Nair','Pillai','Hegde','Murthy','Gowda','Shetty','Iyer','Bhat','Krishnan','Desai','Mehta'];
+const DEPTS = ['CSE','CSE','CSE','ISE','ISE','ECE','ECE','AE','ME','CV'];
+
+const TEACHERS = Array.from({length:20},(_,i)=>{
+  const rng = seededRand(i*1031+7);
+  const fn = FIRST_NAMES[i];
+  const ln = LAST_NAMES[Math.floor(rng()*LAST_NAMES.length)];
+  const dept = DEPTS[i % DEPTS.length];
+  return {
+    id: i+1,
+    tid: `T${String(i+1).padStart(3,'0')}`,
+    name: `${fn} ${ln}`,
+    dept,
+    timetable: buildTimetable(i+1)
+  };
+});
+
+// time-slot label → day + period index
+const SLOT_MAP = {
+  '9 AM - 12 PM':  {day:'Mon', periods:[0,1,2]},
+  '10 AM - 1 PM':  {day:'Tue', periods:[1,2,3]},
+  '2 PM - 5 PM':   {day:'Wed', periods:[4,5,6]},
+  '9 AM - 12 PM':  {day:'Thu', periods:[0,1,2]},
+  '10 AM - 1 PM':  {day:'Fri', periods:[1,2,3]},
+};
+
+// Map slot label → periods covered (index 0-7)
+const SLOT_PERIODS = {
+  '9 AM - 12 PM' : [0,1,2],
+  '10 AM - 1 PM' : [1,2,3],
+  '2 PM - 5 PM'  : [4,5,6],
+  '9 AM - 12 PM' : [0,1,2],
+};
+
+const EXAM_SCHEDULE = [
+  {id:1,  date:'2026-08-10', slot:'9 AM - 12 PM',  day:'Mon', subject:'Machine Learning',       branch:'CSE',     sem:'Sem 7', room:'Room 301'},
+  {id:2,  date:'2026-08-10', slot:'2 PM - 5 PM',   day:'Mon', subject:'Data Structures',        branch:'ISE',     sem:'Sem 5', room:'Room 302'},
+  {id:3,  date:'2026-08-11', slot:'9 AM - 12 PM',  day:'Tue', subject:'Operating Systems',      branch:'CSE',     sem:'Sem 5', room:'Room 201'},
+  {id:4,  date:'2026-08-11', slot:'2 PM - 5 PM',   day:'Tue', subject:'Digital Electronics',    branch:'ECE',     sem:'Sem 3', room:'Room 202'},
+  {id:5,  date:'2026-08-12', slot:'9 AM - 12 PM',  day:'Wed', subject:'DBMS',                   branch:'ISE',     sem:'Sem 5', room:'Room 303'},
+  {id:6,  date:'2026-08-12', slot:'2 PM - 5 PM',   day:'Wed', subject:'Computer Networks',      branch:'CSE',     sem:'Sem 6', room:'Room 304'},
+  {id:7,  date:'2026-08-13', slot:'9 AM - 12 PM',  day:'Thu', subject:'Compiler Design',        branch:'CSE',     sem:'Sem 7', room:'Room 401'},
+  {id:8,  date:'2026-08-13', slot:'2 PM - 5 PM',   day:'Thu', subject:'AI & Machine Learning',  branch:'CSE AI-ML',sem:'Sem 7',room:'Room 402'},
+  {id:9,  date:'2026-08-14', slot:'9 AM - 12 PM',  day:'Fri', subject:'Cloud Computing',        branch:'ISE',     sem:'Sem 7', room:'Room 403'},
+  {id:10, date:'2026-08-14', slot:'2 PM - 5 PM',   day:'Fri', subject:'Control Systems',        branch:'AE',      sem:'Sem 5', room:'Room 101'},
+  {id:11, date:'2026-08-17', slot:'9 AM - 12 PM',  day:'Mon', subject:'Software Engineering',   branch:'ISE',     sem:'Sem 6', room:'Room 102'},
+  {id:12, date:'2026-08-17', slot:'2 PM - 5 PM',   day:'Mon', subject:'Embedded Systems',       branch:'ECE',     sem:'Sem 6', room:'Room 201'},
+  {id:13, date:'2026-08-18', slot:'9 AM - 12 PM',  day:'Tue', subject:'Thermodynamics',         branch:'ME',      sem:'Sem 4', room:'Room 103'},
+  {id:14, date:'2026-08-18', slot:'2 PM - 5 PM',   day:'Tue', subject:'Fluid Mechanics',        branch:'CV',      sem:'Sem 4', room:'Room 104'},
+  {id:15, date:'2026-08-19', slot:'9 AM - 12 PM',  day:'Wed', subject:'Microprocessors',        branch:'ECE',     sem:'Sem 5', room:'Room 303'},
+  {id:16, date:'2026-08-19', slot:'2 PM - 5 PM',   day:'Wed', subject:'Big Data Analytics',     branch:'CSE',     sem:'Sem 7', room:'Room 404'},
+  {id:17, date:'2026-08-20', slot:'9 AM - 12 PM',  day:'Thu', subject:'Computer Architecture',  branch:'CSE',     sem:'Sem 6', room:'Room 305'},
+  {id:18, date:'2026-08-20', slot:'2 PM - 5 PM',   day:'Thu', subject:'Theory of Computation',  branch:'CSE',     sem:'Sem 6', room:'Room 306'},
+];
+
+// ─────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────
+let allotments = [];          // [{exam, teacher, status}]
+let teacherDutyCount = {};    // teacherId → count
+
+// ─────────────────────────────────────────────
+// RENDER EXAM SCHEDULE CARDS
+// ─────────────────────────────────────────────
+function renderExamCards(){
+  const el = document.getElementById('examScheduleList');
+  el.innerHTML = EXAM_SCHEDULE.map(e=>`
+    <div class="exam-card">
+      <div class="exam-card-info">
+        <strong>${e.subject}</strong>
+        <span class="exam-pill">📅 ${formatDate(e.date)}</span>
+        <span class="exam-pill">⏰ ${e.slot}</span>
+        <span class="exam-pill">🏫 ${e.room}</span>
+        <span class="exam-pill">🎓 ${e.branch} · ${e.sem}</span>
+      </div>
+      <span class="badge badge-neutral">${e.day}</span>
+    </div>
+  `).join('');
+}
+
+function formatDate(d){
+  const dt = new Date(d);
+  return dt.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+}
+
+// ─────────────────────────────────────────────
+// GENERATE DUTIES
+// ─────────────────────────────────────────────
+function slotPeriods(slot){
+  if(slot.includes('9 AM'))  return [0,1,2];
+  if(slot.includes('10 AM')) return [1,2,3];
+  if(slot.includes('2 PM'))  return [4,5,6];
+  return [0,1,2];
+}
+
+function isTeacherFree(teacher, day, periods){
+  const dayTT = teacher.timetable[day] || [];
+  return periods.every(p => dayTT[p] === 'FREE');
+}
+
+function shuffle(arr){
+  const a = [...arr];
+  for(let i=a.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+  return a;
+}
+
+function generateDuties(){
+  teacherDutyCount = {};
+  TEACHERS.forEach(t=>{ teacherDutyCount[t.id]=0; });
+  allotments = [];
+
+  // Track assignments per time-slot to avoid double booking
+  const teacherSlotMap = {}; // "teacherId_date_slot" → true
+
+  EXAM_SCHEDULE.forEach(exam=>{
+    const periods = slotPeriods(exam.slot);
+    const freeTeachers = shuffle(TEACHERS).filter(t=>{
+      const key = `${t.id}_${exam.date}_${exam.slot}`;
+      if(teacherSlotMap[key]) return false;
+      return isTeacherFree(t, exam.day, periods);
+    });
+
+    // Sort by workload (ascending) to balance
+    freeTeachers.sort((a,b)=>(teacherDutyCount[a.id]||0)-(teacherDutyCount[b.id]||0));
+
+    if(freeTeachers.length === 0){
+      allotments.push({exam, teacher:null, status:'No Teacher'});
+    } else {
+      const chosen = freeTeachers[0];
+      teacherDutyCount[chosen.id] = (teacherDutyCount[chosen.id]||0)+1;
+      const key = `${chosen.id}_${exam.date}_${exam.slot}`;
+      teacherSlotMap[key] = true;
+      allotments.push({exam, teacher:chosen, status:'Assigned'});
+    }
+  });
+
+  updateStats();
+  renderTable(allotments);
+}
+
+function resetDuties(){
+  allotments = [];
+  teacherDutyCount = {};
+  renderTable([]);
+  updateStats();
+}
+
+// ─────────────────────────────────────────────
+// STATS
+// ─────────────────────────────────────────────
+function updateStats(){
+  const today = new Date().toISOString().split('T')[0];
+  const todayExams = EXAM_SCHEDULE.filter(e=>e.date===today).length;
+  const assigned   = allotments.filter(a=>a.status==='Assigned').length;
+  const availSet   = new Set(allotments.filter(a=>a.teacher).map(a=>a.teacher.id));
+
+  document.getElementById('statTeachers').textContent = TEACHERS.length;
+  document.getElementById('statExams').textContent    = todayExams;
+  document.getElementById('statAvail').textContent    = availSet.size;
+  document.getElementById('statAssigned').textContent = assigned;
+}
+
+// ─────────────────────────────────────────────
+// RENDER TABLE
+// ─────────────────────────────────────────────
+function renderTable(data){
+  const tbody = document.getElementById('dutyTableBody');
+  document.getElementById('rowCount').textContent = `${data.length} records`;
+
+  if(!data.length){
+    tbody.innerHTML = `<tr><td colspan="10"><div class="empty-duty">🎯 Click <strong>Generate Invigilation Duty</strong> to auto-assign teachers.</div></td></tr>`;
+    return;
+  }
+
+  const maxDuty = Math.max(1,...Object.values(teacherDutyCount));
+
+  tbody.innerHTML = data.map((row,i)=>{
+    const {exam,teacher,status} = row;
+    const badgeCls = status==='Assigned'?'badge-assigned':status==='Available'?'badge-avail':'badge-none';
+    const dutyCount = teacher ? (teacherDutyCount[teacher.id]||0) : 0;
+    const fillPct   = teacher ? Math.round((dutyCount/maxDuty)*100) : 0;
+    const freePeriods = teacher ? countFree(teacher) : '-';
+
+    const ttBtn = teacher
+      ? `<button class="btn btn-outline" style="padding:4px 10px;font-size:.75rem;" onclick="openTTModal(${teacher.id})">View TT</button>`
+      : '';
+
+    return `
+    <tr data-teacher="${teacher?teacher.name.toLowerCase():''}"
+        data-dept="${teacher?teacher.dept:''}"
+        data-date="${exam.date}"
+        data-status="${status}">
+      <td style="color:var(--text-secondary);">${i+1}</td>
+      <td>
+        <strong>${teacher?teacher.name:'—'}</strong>
+        ${teacher?`<div style="font-size:.75rem;color:var(--text-secondary);">${teacher.tid}</div>`:''}
+        ${ttBtn}
+      </td>
+      <td>${teacher?`<span class="badge badge-neutral">${teacher.dept}</span>`:'-'}</td>
+      <td>
+        <strong>${exam.subject}</strong>
+        <div style="font-size:.75rem;color:var(--text-secondary);">${exam.branch} · ${exam.sem}</div>
+      </td>
+      <td>${exam.room}</td>
+      <td style="white-space:nowrap;">${formatDate(exam.date)}</td>
+      <td style="white-space:nowrap;">${exam.slot}</td>
+      <td style="min-width:80px;">
+        ${teacher?`<div style="font-size:.75rem;">${dutyCount} duties</div>
+        <div class="workload-bar"><div class="workload-fill" style="width:${fillPct}%"></div></div>`:'—'}
+      </td>
+      <td style="text-align:center;">${freePeriods}</td>
+      <td><span class="badge ${badgeCls}">${status}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function countFree(teacher){
+  let n=0;
+  DAYS.forEach(d=>{ n += (teacher.timetable[d]||[]).filter(x=>x==='FREE').length; });
+  return n;
+}
+
+// ─────────────────────────────────────────────
+// FILTERS
+// ─────────────────────────────────────────────
+function applyFilters(){
+  const q      = document.getElementById('searchInput').value.toLowerCase();
+  const dept   = document.getElementById('filterDept').value;
+  const date   = document.getElementById('filterDate').value;
+  const status = document.getElementById('filterStatus').value;
+
+  let visible=0;
+  document.querySelectorAll('#dutyTableBody tr[data-status]').forEach(row=>{
+    const matchQ    = !q      || row.dataset.teacher.includes(q);
+    const matchDept = !dept   || row.dataset.dept===dept;
+    const matchDate = !date   || row.dataset.date===date;
+    const matchStat = !status || row.dataset.status===status;
+    const show = matchQ && matchDept && matchDate && matchStat;
+    row.style.display = show?'':'none';
+    if(show) visible++;
+  });
+  document.getElementById('rowCount').textContent = `${visible} records`;
+}
+
+// ─────────────────────────────────────────────
+// TIMETABLE MODAL
+// ─────────────────────────────────────────────
+function openTTModal(tid){
+  const t = TEACHERS.find(x=>x.id===tid);
+  if(!t) return;
+  document.getElementById('ttModalTitle').textContent = t.name;
+  document.getElementById('ttModalDept').textContent  = `Department: ${t.dept} · ID: ${t.tid}`;
+
+  const PERIOD_LABELS = ['P1','P2','P3','P4','P5','P6','P7','P8'];
+  let html = `<div class="tt-head"></div>`;
+  PERIOD_LABELS.forEach(p=>{ html+=`<div class="tt-head">${p}</div>`; });
+  DAYS.forEach(day=>{
+    html += `<div class="tt-head">${day}</div>`;
+    (t.timetable[day]||[]).forEach(type=>{
+      const cls = type==='CLASS'?'p-class':type==='LAB'?'p-lab':'p-free';
+      html += `<div class="tt-cell ${cls}">${type==='CLASS'?'C':type==='LAB'?'L':'F'}</div>`;
+    });
+  });
+  document.getElementById('ttGrid').innerHTML = html;
+  document.getElementById('ttModal').classList.add('show');
+}
+
+function closeTTModal(){
+  document.getElementById('ttModal').classList.remove('show');
+}
+
+// ─────────────────────────────────────────────
+// EXPORT STUBS
+// ─────────────────────────────────────────────
+function exportPDF(){
+  alert('PDF export: use the browser Print dialog (Ctrl+P / Cmd+P) and select "Save as PDF".');
+}
+
+function exportExcel(){
+  if(!allotments.length){ alert('Generate duties first.'); return; }
+  const rows = [['#','Teacher','TID','Department','Subject','Branch','Semester','Room','Date','Time Slot','Status']];
+  allotments.forEach((row,i)=>{
+    const {exam,teacher,status}=row;
+    rows.push([i+1, teacher?teacher.name:'—', teacher?teacher.tid:'—', teacher?teacher.dept:'—',
+      exam.subject, exam.branch, exam.sem, exam.room, exam.date, exam.slot, status]);
+  });
+  const csv = rows.map(r=>r.map(c=>`"${c}"`).join(',')).join('\n');
+  const blob = new Blob([csv],{type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'teacher_duty_allotment.csv';
+  a.click();
+}
+
+// ─────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded',()=>{
+  renderExamCards();
+  updateStats();
+  document.getElementById('ttModal').addEventListener('click',e=>{ if(e.target===document.getElementById('ttModal')) closeTTModal(); });
+});
+</script>
+{% endblock %}

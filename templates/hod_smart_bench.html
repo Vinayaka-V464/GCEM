@@ -1,0 +1,708 @@
+{% extends "base.html" %}
+{% block title %}Bench Allotment - HOD Dashboard{% endblock %}
+{% set show_navbar = true %}
+
+{% block head %}{{ super() }}
+<style>
+.sb-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:14px;margin-bottom:24px;}
+.sb-stat{background:var(--glass-card-bg);border:1px solid var(--glass-card-border);border-radius:var(--radius-lg);padding:18px;text-align:center;backdrop-filter:blur(var(--glass-blur));}
+.sb-stat-val{font-family:var(--font-heading);font-size:2rem;font-weight:700;color:var(--green-primary);}
+.sb-stat-lbl{font-size:.78rem;color:var(--text-secondary);margin-top:3px;font-weight:500;}
+.tab-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;}
+.tab-btn{padding:9px 20px;border-radius:999px;border:1px solid var(--glass-card-border);background:var(--glass-card-bg);color:var(--brown);font-weight:600;font-size:.875rem;cursor:pointer;transition:all .2s;}
+.tab-btn.active{background:var(--green-primary);color:var(--white);border-color:var(--green-primary);}
+.tab-panel{display:none;}.tab-panel.active{display:block;}
+.empty-msg{text-align:center;padding:50px 20px;color:var(--text-secondary);}
+/* branch pill checkboxes */
+.br-pill{display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:999px;
+  border:2px solid var(--glass-card-border);background:var(--glass-card-bg);
+  cursor:pointer;font-size:.875rem;font-weight:600;transition:all .2s;user-select:none;}
+.br-pill:hover{border-color:var(--green-primary);}
+.br-pill.sel{background:var(--green-bg);border-color:var(--green-primary);}
+.br-dot{width:10px;height:10px;border-radius:3px;flex-shrink:0;}
+/* tables */
+.gt{width:100%;border-collapse:collapse;font-size:.875rem;}
+.gt th{padding:10px 13px;text-align:left;font-weight:600;color:var(--text-secondary);font-size:.78rem;border-bottom:2px solid var(--glass-card-border);}
+.gt td{padding:9px 13px;border-bottom:1px solid var(--glass-card-border);vertical-align:middle;}
+.gt tbody tr:hover{background:var(--glass-bg);}
+/* classroom grid */
+.cls-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-bottom:22px;}
+.cls-bench{background:var(--glass-bg);border:1px solid var(--glass-card-border);border-radius:12px;padding:10px;display:flex;gap:8px;}
+.cls-seat{flex:1;border-radius:9px;padding:8px 9px;min-height:60px;border:1px solid transparent;}
+.cls-seat-lbl{font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;opacity:.7;}
+.cls-seat-name{font-size:.8rem;font-weight:600;}
+.cls-seat-usn{font-size:.65rem;opacity:.8;}
+.cls-seat-br{font-size:.65rem;font-weight:700;margin-top:2px;}
+.cls-empty{opacity:.4;display:flex;align-items:center;justify-content:center;font-size:.75rem;color:var(--text-secondary);}
+/* bench cards */
+.bc-grid{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;}
+.bc{background:var(--glass-card-bg);border:1px solid var(--glass-card-border);border-radius:var(--radius-md);padding:12px;min-width:190px;flex:0 0 auto;backdrop-filter:blur(var(--glass-blur));}
+.bc-lbl{font-size:.67rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;}
+.bc-seats{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+.bc-seat{border-radius:9px;padding:8px;border:1px solid var(--glass-card-border);}
+.bc-id{font-size:.63rem;font-weight:700;margin-bottom:1px;}
+.bc-name{font-size:.8rem;font-weight:600;}
+.bc-br{font-size:.63rem;margin-top:2px;opacity:.85;}
+.bc-empty{background:var(--glass-bg);border:1px dashed var(--glass-card-border);opacity:.45;display:flex;align-items:center;justify-content:center;min-height:50px;border-radius:9px;font-size:.75rem;}
+.bc-warn{border-color:var(--status-danger-text)!important;}
+/* branch colours */
+.brCSE{background:rgba(74,162,223,.18);border-color:rgba(74,162,223,.4)!important;color:#1a6fa3;}
+.brAIML{background:rgba(220,170,30,.18);border-color:rgba(200,150,20,.35)!important;color:#7a5a00;}
+.brISE{background:rgba(80,77,63,.13);border-color:rgba(80,77,63,.3)!important;color:#504D3F;}
+.brAE{background:rgba(90,165,60,.18);border-color:rgba(70,140,50,.35)!important;color:#3a6e22;}
+.brECE{background:rgba(177,80,35,.15);border-color:rgba(177,80,35,.35)!important;color:#8a3a12;}
+:root[data-theme='dark'] .brCSE{color:#7ec8f7;}
+:root[data-theme='dark'] .brAIML{color:#f0d060;}
+:root[data-theme='dark'] .brISE{color:#c7d0c2;}
+:root[data-theme='dark'] .brAE{color:#90e060;}
+:root[data-theme='dark'] .brECE{color:#f4a97a;}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+ <div class="container">
+
+  <div class="dashboard-header fade-in">
+   <a href="/hod/dashboard" class="btn btn-outline" style="padding:8px 18px;font-size:.85rem;margin-bottom:14px;">← Back</a>
+   <div class="section-label">HOD Tools</div>
+   <h1 class="h1">Bench Allotment</h1>
+   <p class="text-muted" style="font-size:1.05rem;">Branch-diverse exam seating — different branches on every bench. All mock data.</p>
+  </div>
+
+  <!-- Stats -->
+  <div class="sb-stats fade-in">
+   <div class="sb-stat"><div class="stat-icon">🎓</div><div class="sb-stat-val" id="stS">0</div><div class="sb-stat-lbl">Students</div></div>
+   <div class="sb-stat"><div class="stat-icon">🏫</div><div class="sb-stat-val" id="stR">0</div><div class="sb-stat-lbl">Rooms</div></div>
+   <div class="sb-stat"><div class="stat-icon">🪑</div><div class="sb-stat-val" id="stB">0</div><div class="sb-stat-lbl">Benches</div></div>
+   <div class="sb-stat"><div class="stat-icon">🏷️</div><div class="sb-stat-val" id="stBr">0</div><div class="sb-stat-lbl">Branches</div></div>
+   <div class="sb-stat"><div class="stat-icon">⚠️</div><div class="sb-stat-val" id="stP">0</div><div class="sb-stat-lbl">Needs Manual</div></div>
+  </div>
+
+  <!-- Controls -->
+  <div class="card fade-in" style="animation-delay:.08s;">
+   <div class="section-label">Controls</div>
+
+   <!-- Step 1 — Branches (hardcoded pills) -->
+   <p style="font-size:.875rem;font-weight:700;margin-bottom:10px;">
+    Step 1 — Select Branches
+    <span style="font-weight:400;color:var(--text-secondary);"> (tick every branch sitting this exam)</span>
+   </p>
+   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;">
+    <label class="br-pill" id="pill-CSE" onclick="toggleBranch(this,'CSE')">
+     <span class="br-dot" style="background:#4AA2DF;"></span>CSE
+    </label>
+    <label class="br-pill" id="pill-CSEAIML" onclick="toggleBranch(this,'CSE AI-ML')">
+     <span class="br-dot" style="background:#c8a000;"></span>CSE AI-ML
+    </label>
+    <label class="br-pill" id="pill-ISE" onclick="toggleBranch(this,'ISE')">
+     <span class="br-dot" style="background:#504D3F;"></span>ISE
+    </label>
+    <label class="br-pill" id="pill-AE" onclick="toggleBranch(this,'AE')">
+     <span class="br-dot" style="background:#4a8a28;"></span>AE
+    </label>
+    <label class="br-pill" id="pill-ECE" onclick="toggleBranch(this,'ECE')">
+     <span class="br-dot" style="background:#c05010;"></span>ECE
+    </label>
+   </div>
+
+   <!-- Step 2 — Semester -->
+   <p style="font-size:.875rem;font-weight:700;margin-bottom:8px;">Step 2 — Semester</p>
+   <div style="margin-bottom:18px;">
+    <select class="form-input" id="selSem" onchange="onSemChange()" style="min-width:190px;">
+     <option value="">— Select Semester —</option>
+     <option value="3">Semester 3</option>
+     <option value="4">Semester 4</option>
+     <option value="5">Semester 5</option>
+     <option value="6">Semester 6</option>
+     <option value="7">Semester 7</option>
+     <option value="8">Semester 8</option>
+    </select>
+   </div>
+
+   <!-- Step 3 — Subject -->
+   <p style="font-size:.875rem;font-weight:700;margin-bottom:8px;">
+    Step 3 — Subject
+    <span style="font-weight:400;color:var(--text-secondary);" id="subjHint"></span>
+   </p>
+   <div style="margin-bottom:20px;">
+    <select class="form-input" id="selSubject" style="min-width:240px;">
+     <option value="">— Select Subject —</option>
+    </select>
+   </div>
+
+   <!-- Buttons -->
+   <div style="display:flex;gap:10px;flex-wrap:wrap;">
+    <button class="btn btn-primary" onclick="generateSeating()">🎯 Generate Seating</button>
+    <button class="btn btn-outline"  onclick="shuffleSeating()">🔀 Shuffle Again</button>
+    <button class="btn btn-secondary" onclick="exportExcel()">📊 Export Excel</button>
+    <button class="btn btn-outline"  onclick="window.print()">🖨️ Print</button>
+   </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tab-bar fade-in" style="animation-delay:.12s;">
+   <button class="tab-btn active" onclick="switchTab('ov',this)">📊 Overview</button>
+   <button class="tab-btn" onclick="switchTab('cls',this)">🏫 Classroom</button>
+   <button class="tab-btn" onclick="switchTab('bn',this)">🪑 Bench View</button>
+   <button class="tab-btn" onclick="switchTab('sr',this)">🔍 Search</button>
+  </div>
+
+  <!-- Overview -->
+  <div class="tab-panel active" id="tab-ov">
+   <div class="card fade-in">
+    <div class="section-label">Overview</div>
+    <div class="empty-msg" id="ov-empty">Select branches, semester &amp; subject, then click <strong>Generate Seating</strong>.</div>
+    <div id="ov-body" style="display:none;"></div>
+   </div>
+  </div>
+
+  <!-- Classroom -->
+  <div class="tab-panel" id="tab-cls">
+   <div class="card fade-in">
+    <div class="section-label">Classroom View</div>
+    <div class="empty-msg" id="cls-empty">Generate seating to see the classroom layout.</div>
+    <div id="cls-body" style="display:none;"></div>
+   </div>
+  </div>
+
+  <!-- Bench View -->
+  <div class="tab-panel" id="tab-bn">
+   <div class="card fade-in">
+    <div class="section-label">Bench View</div>
+    <div class="empty-msg" id="bn-empty">Generate seating to see bench cards.</div>
+    <div id="bn-body" style="display:none;"></div>
+   </div>
+  </div>
+
+  <!-- Search -->
+  <div class="tab-panel" id="tab-sr">
+   <div class="card fade-in">
+    <div class="section-label">Student Search</div>
+    <input class="form-input" type="text" id="srQ" placeholder="🔍 Name, USN or branch…"
+     style="max-width:340px;margin-bottom:14px;" oninput="doSearch()">
+    <div id="sr-body"><div class="empty-msg">Generate seating first, then search.</div></div>
+   </div>
+  </div>
+
+ </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+/* ================================================================
+   CURRICULUM  —  branch -> semester -> subjects[]
+   ================================================================ */
+var CURRICULUM = {
+  "CSE": {
+    "3": ["Data Structures","Digital Design","Discrete Mathematics","Computer Organization"],
+    "4": ["Design & Analysis of Algorithms","Operating Systems","Object Oriented Programming","Microcontrollers"],
+    "5": ["Database Management Systems","Computer Networks","Automata Theory","Software Engineering"],
+    "6": ["Compiler Design","Distributed Systems","Information Security","Web Technologies"],
+    "7": ["Machine Learning","Cloud Computing","Big Data Analytics","Internet of Things"],
+    "8": ["Deep Learning","Blockchain Technology","Capstone Project","Natural Language Processing"]
+  },
+  "CSE AI-ML": {
+    "5": ["Machine Learning Fundamentals","Python for Data Science","Statistics for AI","Linear Algebra"],
+    "6": ["Deep Learning","Computer Vision","Reinforcement Learning","AI Ethics"],
+    "7": ["Natural Language Processing","Advanced Machine Learning","Autonomous Systems","Cloud Computing"],
+    "8": ["Generative AI","AI Capstone Project","Edge AI","MLOps"]
+  },
+  "ISE": {
+    "3": ["Data Structures","Digital Electronics","C++ Programming","Mathematics III"],
+    "4": ["Operating Systems","Design of Algorithms","OOP with Java","Database Systems"],
+    "5": ["Database Management Systems","Computer Networks","Software Engineering","Information Security"],
+    "6": ["Cloud Computing","Web Application Development","Mobile Computing","Cyber Security"],
+    "7": ["Big Data Analytics","IoT & Embedded Systems","DevOps","Machine Learning"],
+    "8": ["Blockchain","AI Applications","Capstone Project","Digital Marketing Tech"]
+  },
+  "AE": {
+    "3": ["Engineering Mechanics","Fluid Mechanics I","Thermodynamics I","Materials Science"],
+    "4": ["Aerodynamics I","Aircraft Structures I","Propulsion I","Flight Mechanics"],
+    "5": ["Aerodynamics II","Aircraft Structures II","Control Systems","Avionics"],
+    "6": ["Aircraft Design","Propulsion II","Computational Fluid Dynamics","Stability & Control"],
+    "7": ["Finite Element Analysis","Spacecraft Technology","Turbomachinery","Aircraft Performance"],
+    "8": ["Advanced Composites","Experimental Aerodynamics","Capstone Project","UAV Systems"]
+  },
+  "ECE": {
+    "3": ["Network Analysis","Electronic Devices","Digital Electronics","Signals & Systems"],
+    "4": ["Analog Circuits","Microprocessors","Communication Systems I","Electromagnetic Theory"],
+    "5": ["Digital Communication","VLSI Design","Embedded Systems","Control Systems"],
+    "6": ["Wireless Communication","Digital Signal Processing","RF Engineering","Optical Communication"],
+    "7": ["Advanced VLSI","IoT Systems","Image Processing","Communication Networks"],
+    "8": ["5G Technology","Photonics","Capstone Project","Radar & Navigation"]
+  }
+};
+
+/* ================================================================
+   MOCK STUDENTS  —  built once at page load
+   ================================================================ */
+var FN = ["Rahul","Ananya","Kiran","Priya","Arjun","Deepa","Suresh","Meena","Vijay","Lakshmi",
+          "Arun","Kavya","Mohan","Shreya","Ravi","Pooja","Rajesh","Divya","Nikhil","Sneha",
+          "Amit","Riya","Sanjay","Nandini","Tejas","Bhavya","Rohan","Asha","Vivek","Keerthi",
+          "Pranav","Swati","Harsh","Ankita","Siddharth","Pallavi","Yash","Tanvi","Ishaan","Diya"];
+var LN = ["Kumar","Sharma","Reddy","Naik","Rao","Patel","Verma","Singh","Joshi","Nair",
+          "Pillai","Hegde","Murthy","Gowda","Shetty","Iyer","Bhat","Krishnan","Desai","Mehta"];
+var COUNTS = {
+  "CSE":       {"3":55,"4":55,"5":58,"6":58,"7":52,"8":48},
+  "CSE AI-ML": {"5":42,"6":44,"7":40,"8":36},
+  "ISE":       {"3":50,"4":50,"5":52,"6":52,"7":48,"8":44},
+  "AE":        {"3":38,"4":38,"5":36,"6":36,"7":32,"8":28},
+  "ECE":       {"3":50,"4":50,"5":48,"6":48,"7":44,"8":40}
+};
+
+function seeded(s){ var v=s|1; return function(){ v=(v*16807)%2147483647; return (v-1)/2147483646; }; }
+
+var ALL_STUDENTS = (function(){
+  var out = []; var uid = 1;
+  var branches = Object.keys(CURRICULUM);
+  for(var bi=0;bi<branches.length;bi++){
+    var branch = branches[bi];
+    var sems   = Object.keys(CURRICULUM[branch]);
+    for(var si=0;si<sems.length;si++){
+      var sem  = sems[si];
+      var n    = ((COUNTS[branch]||{})[sem]) || 40;
+      var rng  = seeded(branch.charCodeAt(0)*997 + parseInt(sem)*31 + uid);
+      var subjs = CURRICULUM[branch][sem];
+      for(var i=0;i<n;i++){
+        var fname = FN[(uid*7+i*3) % FN.length];
+        var lname = LN[(uid*3+i*7) % LN.length];
+        var yr    = parseInt(sem)>=7?"21": parseInt(sem)>=5?"22":"23";
+        var code  = branch.replace(/\s+/g,"").replace("AI-ML","AM").toUpperCase().slice(0,2);
+        var usn   = "1GD"+yr+code+("00"+(i+1)).slice(-3);
+        var subj  = subjs[i % subjs.length];
+        out.push({id:uid, usn:usn, name:fname+" "+lname, branch:branch, semester:sem, subject:subj});
+        uid++;
+      }
+    }
+  }
+  return out;
+})();
+
+/* ================================================================
+   ROOMS
+   ================================================================ */
+var ROOMS = [
+  {id:"R301",name:"Room 301",benches:40},{id:"R302",name:"Room 302",benches:35},
+  {id:"R303",name:"Room 303",benches:30},{id:"R304",name:"Room 304",benches:25},
+  {id:"R201",name:"Room 201",benches:40},{id:"R202",name:"Room 202",benches:35},
+  {id:"R401",name:"Room 401",benches:30},{id:"R402",name:"Room 402",benches:30},
+  {id:"R101",name:"Room 101",benches:40},{id:"R102",name:"Room 102",benches:35},
+  {id:"R103",name:"Room 103",benches:30},{id:"R104",name:"Room 104",benches:25}
+];
+
+/* branch -> CSS class */
+function brCls(b){
+  var m={"CSE":"brCSE","CSE AI-ML":"brAIML","ISE":"brISE","AE":"brAE","ECE":"brECE"};
+  return m[b]||"";
+}
+
+/* ================================================================
+   STATE
+   ================================================================ */
+var selectedBranches = [];
+var currentResult    = null;
+var shuffleSeed      = 42;
+
+/* ================================================================
+   BRANCH TOGGLE PILLS
+   ================================================================ */
+function toggleBranch(el, branch){
+  var idx = selectedBranches.indexOf(branch);
+  if(idx === -1){
+    selectedBranches.push(branch);
+    el.classList.add("sel");
+  } else {
+    selectedBranches.splice(idx,1);
+    el.classList.remove("sel");
+  }
+  onSemChange(); /* refresh subject list */
+}
+
+/* ================================================================
+   SEM CHANGE  → rebuild subject dropdown
+   ================================================================ */
+function onSemChange(){
+  var sem  = document.getElementById("selSem").value;
+  var sel  = document.getElementById("selSubject");
+  var hint = document.getElementById("subjHint");
+  sel.innerHTML = "<option value=''>— Select Subject —</option>";
+  if(!sem || selectedBranches.length === 0){ hint.textContent=""; return; }
+
+  /* collect subjects present in ALL selected branches for this semester */
+  var subjectSets = [];
+  for(var i=0;i<selectedBranches.length;i++){
+    var br   = selectedBranches[i];
+    var list = (CURRICULUM[br]||{})[sem];
+    if(!list || list.length === 0){
+      hint.textContent = "("+br+" has no subjects in Semester "+sem+")";
+      return;
+    }
+    subjectSets.push(list);
+  }
+  hint.textContent = "";
+
+  /* union of all subjects (exam may be single or shared) */
+  var allSubjects = [];
+  for(var i=0;i<subjectSets.length;i++){
+    for(var j=0;j<subjectSets[i].length;j++){
+      var s = subjectSets[i][j];
+      if(allSubjects.indexOf(s)===-1) allSubjects.push(s);
+    }
+  }
+  allSubjects.sort();
+  for(var i=0;i<allSubjects.length;i++){
+    var o = document.createElement("option");
+    o.value = o.textContent = allSubjects[i];
+    sel.appendChild(o);
+  }
+}
+
+/* ================================================================
+   TAB SWITCHING
+   ================================================================ */
+function switchTab(name, btn){
+  var panels = document.querySelectorAll(".tab-panel");
+  for(var i=0;i<panels.length;i++) panels[i].classList.remove("active");
+  var btns = document.querySelectorAll(".tab-btn");
+  for(var i=0;i<btns.length;i++) btns[i].classList.remove("active");
+  document.getElementById("tab-"+name).classList.add("active");
+  btn.classList.add("active");
+}
+
+/* ================================================================
+   GENERATE / SHUFFLE
+   ================================================================ */
+function generateSeating(){
+  if(selectedBranches.length === 0){ alert("Tick at least one branch."); return; }
+  var sem  = document.getElementById("selSem").value;
+  var subj = document.getElementById("selSubject").value;
+  if(!sem) { alert("Select a semester."); return; }
+  if(!subj){ alert("Select a subject."); return; }
+  shuffleSeed = (Date.now() % 99991) || 1;
+  currentResult = allocate(selectedBranches, sem, subj, shuffleSeed);
+  renderAll();
+}
+
+function shuffleSeating(){
+  if(!currentResult){ alert("Generate seating first."); return; }
+  var sem  = document.getElementById("selSem").value;
+  var subj = document.getElementById("selSubject").value;
+  if(!sem||!subj){ alert("Select semester and subject first."); return; }
+  shuffleSeed = ((shuffleSeed * 1301 + 7) % 99991) || 1;
+  currentResult = allocate(selectedBranches, sem, subj, shuffleSeed);
+  renderAll();
+}
+
+/* ================================================================
+   ALLOCATION ALGORITHM
+   ================================================================ */
+function allocate(branches, sem, subject, seed){
+  /* gather students from every selected branch who have this subject this semester */
+  var pool = [];
+  for(var i=0;i<ALL_STUDENTS.length;i++){
+    var s = ALL_STUDENTS[i];
+    if(s.semester === sem && s.subject === subject && branches.indexOf(s.branch) !== -1){
+      pool.push(s);
+    }
+  }
+  if(!pool.length){
+    alert("No students found for the selected combination. Try a different subject or semester.");
+    return null;
+  }
+
+  /* shuffle pool */
+  var rng = seeded(seed);
+  pool.sort(function(){ return rng()-0.5; });
+
+  /* group by branch */
+  var byBranch = {};
+  for(var i=0;i<pool.length;i++){
+    var br = pool[i].branch;
+    if(!byBranch[br]) byBranch[br]=[];
+    byBranch[br].push(pool[i]);
+  }
+
+  /* interleave branches: largest-first for max diversity */
+  var queues = [];
+  var bkeys  = Object.keys(byBranch);
+  for(var i=0;i<bkeys.length;i++) queues.push(byBranch[bkeys[i]]);
+  queues.sort(function(a,b){ return b.length-a.length; });
+
+  var interleaved = [];
+  var going = true;
+  while(going){
+    going = false;
+    for(var q=0;q<queues.length;q++){
+      if(queues[q].length){ interleaved.push(queues[q].shift()); going=true; }
+    }
+  }
+
+  /* pair: each bench = 2 students from DIFFERENT branches */
+  var benches = [];
+  var manual  = [];
+  var i = 0;
+  while(i < interleaved.length){
+    var sA = interleaved[i]; i++;
+    var jIdx = -1;
+    for(var j=i;j<interleaved.length;j++){
+      if(interleaved[j].branch !== sA.branch){ jIdx=j; break; }
+    }
+    if(jIdx === -1){
+      if(i < interleaved.length){ manual.push(sA); }
+      else { benches.push([sA, null]); }
+    } else {
+      var sB = interleaved.splice(jIdx,1)[0];
+      benches.push([sA, sB]);
+    }
+  }
+
+  /* assign benches to rooms */
+  var rIdx=0, bInRoom=0;
+  var roomBenches={};
+  for(var i=0;i<benches.length;i++){
+    while(rIdx<ROOMS.length && bInRoom>=ROOMS[rIdx].benches){ rIdx++; bInRoom=0; }
+    if(rIdx>=ROOMS.length) rIdx=ROOMS.length-1;
+    var room = ROOMS[rIdx];
+    if(!roomBenches[room.id]) roomBenches[room.id]={room:room, list:[]};
+    roomBenches[room.id].list.push({seats:benches[i], benchNo:bInRoom+1});
+    bInRoom++;
+  }
+
+  return {benches:benches, roomBenches:roomBenches, manual:manual,
+          subject:subject, sem:sem, branches:branches, total:pool.length};
+}
+
+/* ================================================================
+   STATS
+   ================================================================ */
+function updateStats(r){
+  if(!r){
+    document.getElementById("stS").textContent="0";
+    document.getElementById("stR").textContent="0";
+    document.getElementById("stB").textContent="0";
+    document.getElementById("stBr").textContent="0";
+    document.getElementById("stP").textContent="0";
+    return;
+  }
+  var brSet={};
+  for(var i=0;i<r.benches.length;i++){
+    for(var j=0;j<r.benches[i].length;j++){
+      if(r.benches[i][j]) brSet[r.benches[i][j].branch]=1;
+    }
+  }
+  document.getElementById("stS").textContent  = r.total;
+  document.getElementById("stR").textContent  = Object.keys(r.roomBenches).length;
+  document.getElementById("stB").textContent  = r.benches.length;
+  document.getElementById("stBr").textContent = Object.keys(brSet).length;
+  document.getElementById("stP").textContent  = r.manual.length;
+}
+
+/* ================================================================
+   RENDER ALL
+   ================================================================ */
+function renderAll(){
+  if(!currentResult) return;
+  updateStats(currentResult);
+  renderOverview();
+  renderClassroom();
+  renderBenchView();
+  resetSearch();
+}
+
+function manualHtml(list){
+  if(!list||!list.length) return "";
+  var html='<div class="alert alert-error mt-3"><strong>⚠️ Needs Manual Allocation — '+list.length+' student(s):</strong>';
+  html+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">';
+  for(var i=0;i<list.length;i++){
+    html+='<span class="badge badge-danger">'+list[i].name+' · '+list[i].usn+' · '+list[i].branch+'</span>';
+  }
+  html+='</div></div>';
+  return html;
+}
+
+/* ── Overview ─────────────────────────────────────────────── */
+function renderOverview(){
+  var r  = currentResult;
+  var rb = r.roomBenches;
+  document.getElementById("ov-empty").style.display="none";
+  document.getElementById("ov-body").style.display="block";
+
+  var html="";
+  var roomIds = Object.keys(rb);
+  for(var ri=0;ri<roomIds.length;ri++){
+    var entry = rb[roomIds[ri]];
+    var list  = entry.list;
+    var room  = entry.room;
+    var brCount={};
+    for(var i=0;i<list.length;i++){
+      for(var j=0;j<list[i].seats.length;j++){
+        if(list[i].seats[j]) brCount[list[i].seats[j].branch]=(brCount[list[i].seats[j].branch]||0)+1;
+      }
+    }
+    var studentCount=0;
+    for(var i=0;i<list.length;i++) for(var j=0;j<list[i].seats.length;j++) if(list[i].seats[j]) studentCount++;
+
+    html+='<div style="margin-bottom:26px;">';
+    html+='<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">';
+    html+='<h4 class="h4" style="color:var(--green-primary);">🏫 '+room.name+'</h4>';
+    html+='<span class="badge badge-neutral">'+list.length+' benches · '+studentCount+' students</span></div>';
+    html+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">';
+    var brs=Object.keys(brCount);
+    for(var i=0;i<brs.length;i++) html+='<span class="badge '+brCls(brs[i])+'">'+brs[i]+': '+brCount[brs[i]]+'</span>';
+    html+='</div>';
+    html+='<div style="overflow-x:auto;"><table class="gt"><thead><tr>';
+    html+='<th>Bench</th><th>Seat A — Name</th><th>USN</th><th>Branch</th>';
+    html+='<th>Seat B — Name</th><th>USN</th><th>Branch</th></tr></thead><tbody>';
+    for(var i=0;i<list.length;i++){
+      var sA=list[i].seats[0], sB=list[i].seats[1];
+      html+='<tr><td><strong>'+list[i].benchNo+'</strong></td>';
+      html+='<td>'+(sA?sA.name:'—')+'</td><td style="font-size:.78rem;">'+(sA?sA.usn:'—')+'</td>';
+      html+='<td>'+(sA?'<span class="badge '+brCls(sA.branch)+'">'+sA.branch+'</span>':'—')+'</td>';
+      html+='<td>'+(sB?sB.name:'—')+'</td><td style="font-size:.78rem;">'+(sB?sB.usn:'—')+'</td>';
+      html+='<td>'+(sB?'<span class="badge '+brCls(sB.branch)+'">'+sB.branch+'</span>':'—')+'</td></tr>';
+    }
+    html+='</tbody></table></div></div>';
+  }
+  html += manualHtml(r.manual);
+  document.getElementById("ov-body").innerHTML=html;
+}
+
+/* ── Classroom View ───────────────────────────────────────── */
+function renderClassroom(){
+  var r  = currentResult;
+  document.getElementById("cls-empty").style.display="none";
+  document.getElementById("cls-body").style.display="block";
+
+  var html="";
+  var roomIds = Object.keys(r.roomBenches);
+  for(var ri=0;ri<roomIds.length;ri++){
+    var entry=r.roomBenches[roomIds[ri]];
+    html+='<div style="margin-bottom:24px;">';
+    html+='<h4 class="h4" style="color:var(--green-primary);margin-bottom:12px;">🏫 '+entry.room.name;
+    html+=' <span class="badge badge-neutral" style="font-size:.75rem;">'+entry.list.length+' benches</span></h4>';
+    html+='<div class="cls-grid">';
+    for(var i=0;i<entry.list.length;i++){
+      var sA=entry.list[i].seats[0], sB=entry.list[i].seats[1];
+      html+='<div class="cls-bench">';
+      html+=clsSeatHtml(sA,'A');
+      html+='<div style="width:1px;background:var(--glass-card-border);margin:0 4px;flex-shrink:0;"></div>';
+      html+=clsSeatHtml(sB,'B');
+      html+='</div>';
+    }
+    html+='</div></div>';
+  }
+  document.getElementById("cls-body").innerHTML=html;
+}
+
+function clsSeatHtml(s,lbl){
+  if(!s) return '<div class="cls-seat cls-empty" style="flex:1;">Empty</div>';
+  return '<div class="cls-seat '+brCls(s.branch)+'" style="flex:1;">'+
+    '<div class="cls-seat-lbl">Seat '+lbl+'</div>'+
+    '<div class="cls-seat-name">'+s.name+'</div>'+
+    '<div class="cls-seat-usn">'+s.usn+'</div>'+
+    '<div class="cls-seat-br">'+s.branch+'</div></div>';
+}
+
+/* ── Bench Card View ──────────────────────────────────────── */
+function renderBenchView(){
+  var r = currentResult;
+  document.getElementById("bn-empty").style.display="none";
+  document.getElementById("bn-body").style.display="block";
+
+  var html="";
+  var roomIds=Object.keys(r.roomBenches);
+  for(var ri=0;ri<roomIds.length;ri++){
+    var entry=r.roomBenches[roomIds[ri]];
+    html+='<div style="margin-bottom:24px;"><div class="section-label">'+entry.room.name+'</div>';
+    html+='<div class="bc-grid">';
+    for(var i=0;i<entry.list.length;i++){
+      var sA=entry.list[i].seats[0], sB=entry.list[i].seats[1];
+      var warn = (!sB)||(sA&&sB&&sA.branch===sB.branch) ? " bc-warn" : "";
+      html+='<div class="bc'+warn+'">';
+      html+='<div class="bc-lbl">Bench '+entry.list[i].benchNo+(warn?' ⚠️':'')+'</div>';
+      html+='<div class="bc-seats">'+bcSeatHtml(sA,'A')+bcSeatHtml(sB,'B')+'</div></div>';
+    }
+    html+='</div></div>';
+  }
+  html+=manualHtml(r.manual);
+  document.getElementById("bn-body").innerHTML=html;
+}
+
+function bcSeatHtml(s,lbl){
+  if(!s) return '<div class="bc-empty">Empty</div>';
+  return '<div class="bc-seat '+brCls(s.branch)+'">'+
+    '<div class="bc-id">Seat '+lbl+' · '+s.usn+'</div>'+
+    '<div class="bc-name">'+s.name+'</div>'+
+    '<div class="bc-br">'+s.branch+' · Sem '+s.semester+'</div></div>';
+}
+
+/* ── Student Search ───────────────────────────────────────── */
+function resetSearch(){
+  document.getElementById("sr-body").innerHTML='<div class="empty-msg">Type a name, USN, or branch to find a seat.</div>';
+}
+
+function doSearch(){
+  var q=document.getElementById("srQ").value.trim().toLowerCase();
+  var el=document.getElementById("sr-body");
+  if(!currentResult){ el.innerHTML='<div class="empty-msg">Generate seating first.</div>'; return; }
+  if(!q){ resetSearch(); return; }
+  var hits=[];
+  var roomIds=Object.keys(currentResult.roomBenches);
+  for(var ri=0;ri<roomIds.length;ri++){
+    var entry=currentResult.roomBenches[roomIds[ri]];
+    for(var i=0;i<entry.list.length;i++){
+      for(var j=0;j<entry.list[i].seats.length;j++){
+        var s=entry.list[i].seats[j];
+        if(!s) continue;
+        if(s.name.toLowerCase().indexOf(q)!==-1||s.usn.toLowerCase().indexOf(q)!==-1||s.branch.toLowerCase().indexOf(q)!==-1)
+          hits.push({s:s,room:entry.room.name,bench:entry.list[i].benchNo,seat:j===0?"A":"B"});
+      }
+    }
+  }
+  if(!hits.length){ el.innerHTML='<div class="empty-msg">No students found.</div>'; return; }
+  var html='<table class="gt"><thead><tr><th>Name</th><th>USN</th><th>Branch</th><th>Sem</th><th>Subject</th><th>Room</th><th>Bench</th><th>Seat</th></tr></thead><tbody>';
+  for(var i=0;i<hits.length;i++){
+    var h=hits[i];
+    html+='<tr><td><strong>'+h.s.name+'</strong></td><td style="font-size:.78rem;">'+h.s.usn+'</td>';
+    html+='<td><span class="badge '+brCls(h.s.branch)+'">'+h.s.branch+'</span></td>';
+    html+='<td>'+h.s.semester+'</td><td>'+h.s.subject+'</td>';
+    html+='<td>'+h.room+'</td><td>'+h.bench+'</td><td><strong>'+h.seat+'</strong></td></tr>';
+  }
+  html+='</tbody></table>';
+  el.innerHTML=html;
+}
+
+/* ================================================================
+   EXPORT
+   ================================================================ */
+function exportExcel(){
+  if(!currentResult){ alert("Generate seating first."); return; }
+  var rows=[["Room","Bench","Seat","Name","USN","Branch","Semester","Subject"]];
+  var roomIds=Object.keys(currentResult.roomBenches);
+  for(var ri=0;ri<roomIds.length;ri++){
+    var entry=currentResult.roomBenches[roomIds[ri]];
+    for(var i=0;i<entry.list.length;i++){
+      for(var j=0;j<entry.list[i].seats.length;j++){
+        var s=entry.list[i].seats[j];
+        if(!s) continue;
+        rows.push([entry.room.name,entry.list[i].benchNo,j===0?"A":"B",s.name,s.usn,s.branch,s.semester,s.subject]);
+      }
+    }
+  }
+  if(currentResult.manual&&currentResult.manual.length){
+    rows.push([]); rows.push(["NEEDS MANUAL ALLOCATION"]);
+    rows.push(["Name","USN","Branch","Semester","Subject"]);
+    for(var i=0;i<currentResult.manual.length;i++){
+      var s=currentResult.manual[i];
+      rows.push([s.name,s.usn,s.branch,s.semester,s.subject]);
+    }
+  }
+  var csv=rows.map(function(r){ return r.map(function(c){ return '"'+String(c).replace(/"/g,'""')+'"'; }).join(","); }).join("\n");
+  var a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+  a.download="bench_allotment.csv";
+  a.click();
+}
+</script>
+{% endblock %}
