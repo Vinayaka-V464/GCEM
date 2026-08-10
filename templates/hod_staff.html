@@ -13,6 +13,118 @@
             <p class="text-muted" style="font-size: 1.125rem;">Approve teachers and manage their subjects</p>
         </div>
 
+        <div class="card fade-in mb-4" style="animation-delay: 0.04s;">
+            <div class="section-label">Timetable Parser</div>
+            <h3 class="h4 mb-2" style="color: var(--green-primary);">Upload and parse class timetable here</h3>
+            <p class="text-muted" style="margin-bottom: 12px;">Use this section to upload timetable PDFs. The parsed timetable is stored in the database and reflected on the teacher dashboard and timetable preview APIs.</p>
+
+            <div style="display:grid; grid-template-columns: 1.1fr 0.9fr; gap: 18px; align-items:start;">
+                <div>
+                    <form action="/hod/upload-timetable" method="POST" enctype="multipart/form-data">
+                        <div class="form-group">
+                            <label for="staff-tt-sem" class="form-label">Semester</label>
+                            <select name="semester" id="staff-tt-sem" class="form-input" onchange="syncStaffTimetableSections()">
+                                {% for sem in semester_options %}
+                                <option value="{{ sem }}">{{ sem }}{% if sem == '1' %}st{% elif sem == '2' %}nd{% elif sem == '3' %}rd{% else %}th{% endif %} Semester</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="staff-tt-section" class="form-label">Section</label>
+                            <select name="section" id="staff-tt-section" class="form-input">
+                                <option value="">Select Section</option>
+                                {% for sec in section_catalog %}
+                                <option value="{{ sec.section }}" data-sem="{{ sec.semester }}">Sem {{ sec.semester }} - {{ sec.section }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <input type="hidden" name="department" value="{{ user.department }}">
+                        <div class="form-group">
+                            <input type="file" class="form-input" name="timetable_pdf" accept=".pdf" required>
+                        </div>
+                        <button type="submit" class="btn btn-secondary">Upload & Parse Timetable</button>
+                    </form>
+                </div>
+
+                <div>
+                    <div class="section-label">Parsed Timetables</div>
+                    {% if timetables %}
+                    <div style="display:grid; gap:10px; max-height: 260px; overflow:auto;">
+                        {% for tt in timetables %}
+                        <div style="padding:12px 14px; border:1px solid var(--glass-card-border); border-radius:12px; background: var(--glass-bg);">
+                            <strong style="display:block;">Sem {{ tt.semester }} - {{ tt.section or 'General' }}</strong>
+                            <div class="text-muted" style="font-size:0.86rem;">{{ tt.title or 'Timetable' }}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="empty-state" style="padding:24px 16px;">
+                        <div class="empty-title">No timetable parsed yet</div>
+                        <p class="text-muted">Upload a PDF to store the timetable in the database.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="card fade-in mb-4" style="animation-delay: 0.06s;">
+            <div class="section-label">Teacher Timetable Parser</div>
+            <h3 class="h4 mb-2" style="color: var(--green-primary);">Upload and parse a teacher timetable</h3>
+            <p class="text-muted" style="margin-bottom: 12px;">Choose a teacher, upload their timetable PDF, and the leisure/teaching periods will be stored for invigilation planning.</p>
+
+            <div style="display:grid; grid-template-columns: 1.1fr 0.9fr; gap: 18px; align-items:start;">
+                <div>
+                    <form action="/hod/upload-teacher-timetable" method="POST" enctype="multipart/form-data">
+                        <div class="form-group">
+                            <label for="teacher-tt-teacher" class="form-label">Teacher</label>
+                            <select name="teacher_id" id="teacher-tt-teacher" class="form-input" required>
+                                <option value="">Select Teacher</option>
+                                {% for t in teachers %}
+                                <option value="{{ t.id }}" {% if selected_teacher_timetable_teacher and t.id == selected_teacher_timetable_teacher.id %}selected{% endif %}>
+                                    {{ t.name }}{% if t.department %} - {{ t.department }}{% endif %}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <input type="file" class="form-input" name="teacher_timetable_pdf" accept=".pdf" required>
+                        </div>
+                        <button type="submit" class="btn btn-secondary">Upload & Parse Teacher Timetable</button>
+                    </form>
+                </div>
+
+                <div>
+                    <div class="section-label">Parsed Teacher Timetable</div>
+                    {% if selected_teacher_timetable_teacher %}
+                    <div style="padding:12px 14px; border:1px solid var(--glass-card-border); border-radius:12px; background: var(--glass-bg); margin-bottom:12px;">
+                        <strong style="display:block;">{{ selected_teacher_timetable_teacher.name }}</strong>
+                        <div class="text-muted" style="font-size:0.86rem;">{{ selected_teacher_timetable_teacher.email }}</div>
+                    </div>
+                    <div style="display:grid; gap:8px; max-height: 320px; overflow:auto;">
+                        {% for row in selected_teacher_timetable %}
+                        <div style="padding:10px 12px; border:1px solid var(--glass-card-border); border-radius:12px; background: var(--glass-bg);">
+                            <strong style="display:block; margin-bottom:8px; color: var(--green-primary);">{{ row.day }}</strong>
+                            <div style="display:grid; gap:6px;">
+                                {% for slot in row.slots %}
+                                <div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; align-items:center;">
+                                    <span class="badge" style="background: var(--green-bg); color: var(--green-primary);">{{ slot.slot_label }}</span>
+                                    <span class="badge" style="background: {% if slot.status == 'teaching' %}var(--orange-light){% else %}var(--cream-dark){% endif %}; color: var(--brown);">{{ slot.status|capitalize }}{% if slot.subject %} · {{ slot.subject }}{% endif %}</span>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="empty-state" style="padding:24px 16px;">
+                        <div class="empty-title">No teacher timetable loaded</div>
+                        <p class="text-muted">Select a teacher and upload their timetable PDF.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
         <div class="card fade-in mb-4" style="animation-delay: 0.05s;">
             <div class="section-label">Master Data</div>
             <h3 class="h4 mb-2" style="color: var(--green-primary);">Semesters, Sections & Subjects</h3>
@@ -374,5 +486,25 @@
             alert(result.message || 'Failed to add staff');
         }
     }
+
+    function syncStaffTimetableSections() {
+        const semesterSelect = document.getElementById('staff-tt-sem');
+        const sectionSelect = document.getElementById('staff-tt-section');
+        if (!semesterSelect || !sectionSelect) return;
+        const semester = semesterSelect.value;
+        Array.from(sectionSelect.options).forEach((option) => {
+            if (!option.value) {
+                option.hidden = false;
+                return;
+            }
+            option.hidden = option.dataset.sem !== semester;
+        });
+        const firstVisible = Array.from(sectionSelect.options).find((option) => option.value && !option.hidden);
+        sectionSelect.value = firstVisible ? firstVisible.value : '';
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        syncStaffTimetableSections();
+    });
 </script>
 {% endblock %}

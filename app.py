@@ -4,12 +4,15 @@
 
 import os
 import base64
+import csv
+import io
 import random
 import re
 import json
 import uuid
 import tempfile
 import fitz  # PyMuPDF
+import sqlite3
 from collections import Counter
 from datetime import datetime, timedelta
 
@@ -20,7 +23,7 @@ try:
 except ImportError:
     pass  # python-dotenv not installed; rely on system environment variables
 from functools import wraps
-from flask import Flask, render_template, request, abort, jsonify, redirect, url_for, session, flash, send_from_directory
+from flask import Flask, render_template, request, abort, jsonify, redirect, url_for, session, flash, send_from_directory, send_file
 from werkzeug.utils import secure_filename
 from database import (
     init_db, create_user, get_user, get_user_by_email, update_user_signature,
@@ -35,6 +38,10 @@ from database import (
     create_note, get_all_notes, get_notes_by_teacher, create_question_bank, get_all_question_banks, get_question_banks_by_teacher, get_question_banks_by_ids,
     get_timetables, create_timetable, add_timetable_entry, clear_timetable_entries, get_timetable_entries, update_timetable_details,
     get_upcoming_events, create_event, clear_calendar_events, get_all_events,
+    get_exam_duty_exams, save_exam_duty_exam, delete_exam_duty_exam,
+    get_exam_duty_teacher_settings, upsert_exam_duty_teacher_setting,
+    get_exam_duty_assignments, save_exam_duty_assignment, clear_exam_duty_assignments,
+    get_teacher_timetable_slots, replace_teacher_timetable_slots, get_teacher_timetable_map,
     get_teacher_stats, get_hod_stats
 )
 
@@ -51,10 +58,160 @@ for folder_name in ['signatures', 'notes', 'question_banks', 'timetables']:
 import storage as cloud_storage
 
 ALLOWED_EXTENSIONS = {'pdf', 'png', 'jpg', 'jpeg', 'gif'}
+QUESTION_PAPER_ANALYSIS_URL = '/hod/question-paper-analysis'
+TEACHER_TIMETABLE_SLOT_DEFS = [
+    ('P1', '8:30–9:30'),
+    ('P2', '9:30–10:30'),
+    ('P3', '10:45–11:45'),
+    ('P4', '11:45–12:45'),
+    ('P5', '1:30–2:30'),
+    ('P6', '2:30–3:30'),
+    ('P7', '3:30–4:30'),
+]
+EXAM_SLOT_TO_TEACHER_SLOTS = {
+    '9 AM – 12 PM': ['P1', 'P2', 'P3'],
+    '9 AM - 12 PM': ['P1', 'P2', 'P3'],
+    '10 AM – 1 PM': ['P2', 'P3', 'P4'],
+    '10 AM - 1 PM': ['P2', 'P3', 'P4'],
+    '2 PM – 5 PM': ['P5', 'P6', 'P7'],
+    '2 PM - 5 PM': ['P5', 'P6', 'P7'],
+}
 
 
 # Initialize database
 init_db()
+
+
+def _exam_duty_day_order(day):
+    order = {
+        'mon': 1, 'monday': 1,
+        'tue': 2, 'tues': 2, 'tuesday': 2,
+        'wed': 3, 'wednesday': 3,
+        'thu': 4, 'thur': 4, 'thurs': 4, 'thursday': 4,
+        'fri': 5, 'friday': 5,
+        'sat': 6, 'saturday': 6,
+    }
+    return order.get(str(day or '').strip().lower(), 99)
+
+
+def _generate_exam_duty_allotments(exams, teachers):
+    active_teachers = [teacher for teacher in teachers if int(teacher.get('active', 1))]
+    if not active_teachers:
+        return []
+
+    duty_count = {teacher['id']: 0 for teacher in active_teachers}
+    busy_slots = set()
+    allotments = []
+
+    ordered_exams = sorted(
+        exams,
+        key=lambda item: (str(item.get('exam_date') or ''), _exam_duty_day_order(item.get('day')), item.get('slot') or '', item.get('id') or 0),
+    )
+
+    for exam in ordered_exams:
+        if not int(exam.get('active', 1)):
+            continue
+
+        slot_key = f"{exam.get('exam_date')}::{exam.get('slot')}"
+        required_slots = EXAM_SLOT_TO_TEACHER_SLOTS.get(str(exam.get('slot') or '').strip(), [])
+        available = []
+        for teacher in active_teachers:
+            if f"{teacher['id']}::{slot_key}" in busy_slots:
+                continue
+            if required_slots and not _teacher_has_leisure_for_exam(teacher.get('id'), exam.get('day'), required_slots):
+                continue
+            available.append(teacher)
+        if not available:
+            allotments.append({
+                'exam_id': exam['id'],
+                'teacher_id': None,
+                'teacher_name': None,
+                'teacher_email': '',
+                'max_duties': 0,
+                'exam_date': exam.get('exam_date'),
+                'day': exam.get('day'),
+                'slot': exam.get('slot'),
+                'subject': exam.get('subject'),
+                'branch': exam.get('branch'),
+                'semester': exam.get('semester'),
+                'room': exam.get('room'),
+                'department': exam.get('department'),
+            })
+            continue
+
+        under_cap = [teacher for teacher in available if duty_count[teacher['id']] < int(teacher.get('max_duties') or 3)]
+        pool = under_cap if under_cap else available
+        pool.sort(key=lambda item: (duty_count[item['id']], item.get('name') or ''))
+
+        if not pool:
+            allotments.append({
+                'exam_id': exam['id'],
+                'teacher_id': None,
+                'teacher_name': None,
+                'teacher_email': '',
+                'max_duties': 0,
+                'exam_date': exam.get('exam_date'),
+                'day': exam.get('day'),
+                'slot': exam.get('slot'),
+                'subject': exam.get('subject'),
+                'branch': exam.get('branch'),
+                'semester': exam.get('semester'),
+                'room': exam.get('room'),
+                'department': exam.get('department'),
+            })
+            continue
+
+        chosen = pool[0]
+        duty_count[chosen['id']] += 1
+        busy_slots.add(f"{chosen['id']}::{slot_key}")
+        allotments.append({
+            'exam_id': exam['id'],
+            'teacher_id': chosen['id'],
+            'teacher_name': chosen.get('name') or 'Unknown teacher',
+            'teacher_email': chosen.get('email') or '',
+            'max_duties': int(chosen.get('max_duties') or 3),
+            'exam_date': exam.get('exam_date'),
+            'day': exam.get('day'),
+            'slot': exam.get('slot'),
+            'subject': exam.get('subject'),
+            'branch': exam.get('branch'),
+            'semester': exam.get('semester'),
+            'room': exam.get('room'),
+            'department': exam.get('department'),
+        })
+
+    return allotments
+
+
+def _teacher_has_leisure_for_exam(teacher_id, day, required_slots):
+    timetable_map = get_teacher_timetable_map(teacher_id)
+    day_map = timetable_map.get(str(day or '').strip()) or {}
+    if not required_slots:
+        return True
+    for slot_code in required_slots:
+        slot = day_map.get(slot_code)
+        if not slot or str(slot.get('status') or '').strip().lower() != 'leisure':
+            return False
+    return True
+
+
+def _teacher_timetable_matrix(teacher_id):
+    timetable_map = get_teacher_timetable_map(teacher_id)
+    matrix = []
+    for day in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']:
+        day_rows = []
+        day_map = timetable_map.get(day, {})
+        for slot_code, slot_label in TEACHER_TIMETABLE_SLOT_DEFS:
+            slot = day_map.get(slot_code) or {}
+            day_rows.append({
+                'slot_code': slot_code,
+                'slot_label': slot_label,
+                'status': slot.get('status') or 'leisure',
+                'subject': slot.get('subject') or '',
+                'notes': slot.get('notes') or '',
+            })
+        matrix.append({'day': day, 'slots': day_rows})
+    return matrix
 
 # --- Firebase Config API ---
 
@@ -429,6 +586,57 @@ def analyze_repeated_questions(question_texts, top_n=10):
     return ranked
 
 
+def _question_analysis_source_label(paper_name, year):
+    paper_name = (paper_name or 'Uploaded paper').strip()
+    year = (year or 'Unknown year').strip()
+    return f"{paper_name} • {year}"
+
+
+def build_question_analysis_summary(file_stats, question_entries, results, top_n, min_repeat_count):
+    """Shape repeated-question analysis into a richer dashboard payload."""
+    file_count = len(file_stats)
+    unique_questions = {
+        normalize_question_text(entry.get('question'))
+        for entry in question_entries
+        if normalize_question_text(entry.get('question'))
+    }
+
+    enriched_results = []
+    for item in results:
+        seen_sources = set()
+        source_labels = []
+        for occurrence in item.get('occurrences', []):
+            label = _question_analysis_source_label(
+                occurrence.get('paper_name'),
+                occurrence.get('year')
+            )
+            if label not in seen_sources:
+                seen_sources.add(label)
+                source_labels.append(label)
+
+        enriched_item = dict(item)
+        enriched_item['source_labels'] = source_labels
+        enriched_item['paper_span'] = len(source_labels)
+        enriched_item['coverage_percent'] = round((len(source_labels) / file_count) * 100, 1) if file_count else 0.0
+        enriched_results.append(enriched_item)
+
+    repeated_results = [item for item in enriched_results if item['count'] >= min_repeat_count]
+    repeated_results.sort(key=lambda item: (-item['count'], -item['paper_span'], item['question'].lower()))
+
+    return {
+        'files': file_stats,
+        'top_n': top_n,
+        'min_repeat_count': min_repeat_count,
+        'total_questions': len(question_entries),
+        'unique_questions': len(unique_questions),
+        'repeated_groups': len(repeated_results),
+        'max_repeat_count': max((item['count'] for item in repeated_results), default=0),
+        'questions_shared_by_all': sum(1 for item in repeated_results if file_count and item['paper_span'] == file_count),
+        'results': repeated_results,
+        'generated_at': datetime.now().strftime('%d %b %Y, %I:%M %p'),
+    }
+
+
 def parse_question_bank_pdf(pdf_source):
     """Parse question bank PDF from a local path."""
     questions_pool = []
@@ -555,6 +763,12 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user' not in session:
+            # If the client expects JSON (AJAX/fetch), return a 401 JSON response
+            accept = request.headers.get('Accept', '')
+            xrw = request.headers.get('X-Requested-With', '')
+            wants_json = ('application/json' in accept) or (xrw == 'XMLHttpRequest') or request.path.startswith('/api/')
+            if wants_json:
+                return jsonify({'error': 'unauthenticated'}), 401
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
@@ -563,8 +777,18 @@ def teacher_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user' not in session:
+            accept = request.headers.get('Accept', '')
+            xrw = request.headers.get('X-Requested-With', '')
+            wants_json = ('application/json' in accept) or (xrw == 'XMLHttpRequest') or request.path.startswith('/api/')
+            if wants_json:
+                return jsonify({'error': 'unauthenticated'}), 401
             return redirect(url_for('login'))
         if (session.get('user') or {}).get('role') not in ['teacher', 'faculty']:
+            accept = request.headers.get('Accept', '')
+            xrw = request.headers.get('X-Requested-With', '')
+            wants_json = ('application/json' in accept) or (xrw == 'XMLHttpRequest') or request.path.startswith('/api/')
+            if wants_json:
+                return jsonify({'error': 'forbidden', 'message': 'Access denied. Teachers only.'}), 403
             flash('Access denied. Teachers only.', 'error')
             return redirect(url_for('dashboard'))
         # Refresh user from DB to reflect approvals/subjects
@@ -589,9 +813,19 @@ def academic_staff_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user' not in session:
+            accept = request.headers.get('Accept', '')
+            xrw = request.headers.get('X-Requested-With', '')
+            wants_json = ('application/json' in accept) or (xrw == 'XMLHttpRequest') or request.path.startswith('/api/')
+            if wants_json:
+                return jsonify({'error': 'unauthenticated'}), 401
             return redirect(url_for('login'))
         role = ((session.get('user') or {}).get('role') or '').strip().lower()
         if role not in ['teacher', 'faculty', 'hod']:
+            accept = request.headers.get('Accept', '')
+            xrw = request.headers.get('X-Requested-With', '')
+            wants_json = ('application/json' in accept) or (xrw == 'XMLHttpRequest') or request.path.startswith('/api/')
+            if wants_json:
+                return jsonify({'error': 'forbidden', 'message': 'Access denied. Academic staff only.'}), 403
             flash('Access denied. Academic staff only.', 'error')
             return redirect(url_for('dashboard'))
 
@@ -616,8 +850,18 @@ def hod_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user' not in session:
+            accept = request.headers.get('Accept', '')
+            xrw = request.headers.get('X-Requested-With', '')
+            wants_json = ('application/json' in accept) or (xrw == 'XMLHttpRequest') or request.path.startswith('/api/')
+            if wants_json:
+                return jsonify({'error': 'unauthenticated'}), 401
             return redirect(url_for('login'))
         if (session.get('user') or {}).get('role') != 'hod':
+            accept = request.headers.get('Accept', '')
+            xrw = request.headers.get('X-Requested-With', '')
+            wants_json = ('application/json' in accept) or (xrw == 'XMLHttpRequest') or request.path.startswith('/api/')
+            if wants_json:
+                return jsonify({'error': 'forbidden', 'message': 'Access denied. HOD only.'}), 403
             flash('Access denied. HOD only.', 'error')
             return redirect(url_for('dashboard'))
         return f(*args, **kwargs)
@@ -719,12 +963,19 @@ def api_register():
     teacher_primary_section = None
     if role in ['teacher', 'faculty'] and selected_section_items:
         teacher_primary_section = (selected_section_items[0].get('section') or '').strip().upper() or None
-    create_user(
-        uid, email, name, role, department, photo_url, email_verified,
-        phone=phone if phone else None,
-        semester=semester if semester else None,
-        section=(section if section else teacher_primary_section)
-    )
+    try:
+        create_user(
+            uid, email, name, role, department, photo_url, email_verified,
+            phone=phone if phone else None,
+            semester=semester if semester else None,
+            section=(section if section else teacher_primary_section)
+        )
+    except sqlite3.IntegrityError as ie:
+        app.logger.warning('Integrity error creating user: %s', ie)
+        return jsonify({'success': False, 'message': 'A user with that email or ID already exists.'}), 409
+    except Exception:
+        app.logger.exception('Unexpected error creating user')
+        return jsonify({'success': False, 'message': 'Internal server error while creating user.'}), 500
     effective_user = get_user(uid) or get_user_by_email(email) or {}
     effective_user_id = effective_user.get('id') or uid
 
@@ -979,6 +1230,8 @@ def teacher_dashboard():
     papers = get_papers_by_teacher(user.get('id'))
     subjects = get_teacher_subjects(user.get('id'))
     sections = get_teacher_sections(user.get('id'))
+    teacher_timetable = _teacher_timetable_matrix(user.get('id'))
+    teacher_timetable_exists = bool(get_teacher_timetable_slots(user.get('id')))
     
     return render_template('teacher_dashboard.html', 
                          user=user, 
@@ -986,6 +1239,8 @@ def teacher_dashboard():
                          papers=papers,
                          subjects=subjects,
                          sections=sections,
+                         teacher_timetable=teacher_timetable,
+                         teacher_timetable_exists=teacher_timetable_exists,
                          current_user=user,
                          show_navbar=True)
 
@@ -1055,70 +1310,159 @@ def hod_staff_management():
     teachers = get_all_teachers(user.get('department')) or []
     subject_catalog = get_subject_catalog(user.get('department')) or []
     section_catalog = get_section_catalog(user.get('department')) or []
+    timetables = get_timetables(user.get('department')) or []
+    semester_options = sorted({str(s.get('semester')) for s in section_catalog if s.get('semester')}, key=lambda x: int(x) if x.isdigit() else 0)
+    if not semester_options:
+        semester_options = [str(i) for i in range(1, 9)]
+    teacher_timetable_teacher = (request.args.get('teacher_timetable_teacher') or '').strip()
     for t in teachers:
         t['subjects'] = get_teacher_subjects(t.get('id'))
         t['sections'] = get_teacher_sections(t.get('id'))
+    if not teacher_timetable_teacher and teachers:
+        teacher_timetable_teacher = str(teachers[0].get('id') or '')
+    selected_teacher_timetable = _teacher_timetable_matrix(teacher_timetable_teacher) if teacher_timetable_teacher else []
+    selected_teacher_timetable_teacher = next((t for t in teachers if str(t.get('id')) == str(teacher_timetable_teacher)), None)
     return render_template('hod_staff.html',
                          user=user,
                          teachers=teachers,
                          subject_catalog=subject_catalog,
                          section_catalog=section_catalog,
+                         timetables=timetables,
+                         semester_options=semester_options,
+                         teacher_timetable_teacher=teacher_timetable_teacher,
+                         selected_teacher_timetable=selected_teacher_timetable,
+                         selected_teacher_timetable_teacher=selected_teacher_timetable_teacher,
                          current_user=user,
                          show_navbar=True)
 
+@app.route('/hod/question-paper-analysis', methods=['GET', 'POST'])
 @app.route('/hod/analyze-question-papers', methods=['POST'])
 @login_required
 @hod_required
-def analyze_previous_question_papers():
-    uploaded_files = request.files.getlist('question_papers')
-    top_n = int(request.form.get('top_n') or 10)
+def hod_question_paper_analysis():
+    user = (session.get('user') or {})
 
-    if not uploaded_files or not any(f and f.filename for f in uploaded_files):
-        flash('Please upload at least one PDF question paper.', 'error')
-        return redirect(url_for('hod_dashboard'))
+    if request.method == 'POST':
+        uploaded_files = request.files.getlist('question_papers')
 
-    all_questions = []
-    file_names = []
-    for file_obj in uploaded_files:
-        if not file_obj or not file_obj.filename:
-            continue
-        if not allowed_file(file_obj.filename):
-            flash(f"Unsupported file type: {file_obj.filename}", 'error')
-            return redirect(url_for('hod_dashboard'))
-
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf', dir=tempfile.gettempdir())
         try:
-            file_obj.save(tmp.name)
-            tmp.close()
-            extracted = extract_questions_from_pdf(tmp.name)
-            pdf_text = "\n".join(page.get_text("text") for page in fitz.open(tmp.name)) if os.path.exists(tmp.name) else ''
-            context = infer_paper_context(file_obj.filename, pdf_text)
-            all_questions.extend([
-                {
-                    'question': item,
-                    'source': context,
-                } for item in extracted
-            ])
-            file_names.append(file_obj.filename)
-        finally:
+            top_n = max(5, min(50, int(request.form.get('top_n') or 10)))
+        except (TypeError, ValueError):
+            top_n = 10
+
+        try:
+            min_repeat_count = max(2, min(10, int(request.form.get('min_repeat_count') or 2)))
+        except (TypeError, ValueError):
+            min_repeat_count = 2
+
+        if not uploaded_files or not any(f and f.filename for f in uploaded_files):
+            flash('Please upload at least one PDF question paper.', 'error')
+            return redirect(QUESTION_PAPER_ANALYSIS_URL)
+
+        all_questions = []
+        file_stats = []
+        for file_obj in uploaded_files:
+            if not file_obj or not file_obj.filename:
+                continue
+            if not file_obj.filename.lower().endswith('.pdf'):
+                flash(f"Unsupported file type: {file_obj.filename}", 'error')
+                return redirect(QUESTION_PAPER_ANALYSIS_URL)
+
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf', dir=tempfile.gettempdir())
             try:
-                os.unlink(tmp.name)
-            except OSError:
-                pass
+                file_obj.save(tmp.name)
+                tmp.close()
+                extracted = extract_questions_from_pdf(tmp.name)
+                pdf_text = ''
+                try:
+                    with fitz.open(tmp.name) as pdf_doc:
+                        pdf_text = "\n".join(page.get_text("text") for page in pdf_doc)
+                except Exception:
+                    pdf_text = ''
 
-    if not all_questions:
-        flash('No readable questions could be extracted from the uploaded PDFs.', 'warning')
-        return redirect(url_for('hod_dashboard'))
+                context = infer_paper_context(file_obj.filename, pdf_text)
+                file_stats.append({
+                    'file_name': file_obj.filename,
+                    'paper_name': context['paper_name'],
+                    'year': context['year'],
+                    'question_count': len(extracted),
+                })
+                all_questions.extend([
+                    {
+                        'question': item,
+                        'source': context,
+                    } for item in extracted
+                ])
+            finally:
+                try:
+                    os.unlink(tmp.name)
+                except OSError:
+                    pass
 
-    results = analyze_repeated_questions(all_questions, top_n=top_n)
-    session['hod_question_paper_analysis'] = {
-        'files': file_names,
-        'top_n': top_n,
-        'total_questions': len(all_questions),
-        'results': results,
-    }
-    flash(f'Analyzed {len(all_questions)} questions and found the most repeated ones.', 'success')
-    return redirect(url_for('hod_dashboard'))
+        if not all_questions:
+            flash('No readable questions could be extracted from the uploaded PDFs.', 'warning')
+            return redirect(QUESTION_PAPER_ANALYSIS_URL)
+
+        results = analyze_repeated_questions(all_questions, top_n=top_n)
+        session['hod_question_paper_analysis'] = build_question_analysis_summary(
+            file_stats=file_stats,
+            question_entries=all_questions,
+            results=results,
+            top_n=top_n,
+            min_repeat_count=min_repeat_count,
+        )
+        flash(f'Analyzed {len(all_questions)} questions and found the most repeated ones.', 'success')
+        return redirect(QUESTION_PAPER_ANALYSIS_URL)
+
+    question_analysis = session.get('hod_question_paper_analysis')
+    return render_template(
+        'hod_question_paper_analysis.html',
+        user=user,
+        question_analysis=question_analysis,
+        current_user=user,
+        show_navbar=True,
+    )
+
+
+@app.route('/hod/question-paper-analysis/clear', methods=['POST'])
+@login_required
+@hod_required
+def clear_question_paper_analysis():
+    session.pop('hod_question_paper_analysis', None)
+    flash('Previous question paper analysis cleared.', 'success')
+    return redirect(QUESTION_PAPER_ANALYSIS_URL)
+
+
+@app.route('/hod/question-paper-analysis/export', methods=['GET'])
+@login_required
+@hod_required
+def export_question_paper_analysis():
+    """Export the current question paper analysis results as CSV."""
+    qa = session.get('hod_question_paper_analysis')
+    if not qa:
+        flash('No analysis results to export.', 'warning')
+        return redirect(QUESTION_PAPER_ANALYSIS_URL)
+
+    import io, csv
+    output = io.StringIO()
+    writer = csv.writer(output)
+    # Only export the question text (single-column CSV)
+    writer.writerow(['Question'])
+
+    for item in qa.get('results', []):
+        question = (item.get('question') or '').replace('\n', ' ').strip()
+        writer.writerow([question])
+
+    csv_data = output.getvalue()
+    output.close()
+
+    from flask import Response
+    filename = f"question_analysis_questions_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    return Response(
+        csv_data,
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename="{filename}"'}
+    )
 
 @app.route('/api/hod/approve-teacher/<teacher_id>', methods=['POST'])
 @login_required
@@ -2808,6 +3152,120 @@ def parse_timetable_pdf(file_path, department, semester, section=None):
         traceback.print_exc()
         return False, str(e)
 
+
+def _teacher_timetable_cells_from_block(block_text):
+    """Convert a single day block into up to seven timetable cell texts."""
+    words = re.findall(r'Leisure|FREE|Break|Lunch|[A-Za-z0-9]+|[–-]', str(block_text), flags=re.I)
+    cells = []
+    buffer = []
+
+    for token in words:
+        token_upper = token.upper()
+        if token_upper in {'BREAK', 'LUNCH'}:
+            continue
+        if token_upper in {'LEISURE', 'FREE'}:
+            if buffer:
+                cells.append(' '.join(buffer).strip())
+                buffer = []
+            cells.append('Leisure')
+        else:
+            buffer.append(token)
+
+    if buffer:
+        cells.append(' '.join(buffer).strip())
+
+    return cells[:len(TEACHER_TIMETABLE_SLOT_DEFS)]
+
+
+def parse_teacher_timetable_pdf(file_path, teacher_id):
+    """Parse a teacher timetable PDF into leisure/teaching slots."""
+    day_order = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    day_aliases = {
+        'monday': 'Mon', 'mon': 'Mon',
+        'tuesday': 'Tue', 'tue': 'Tue', 'tues': 'Tue',
+        'wednesday': 'Wed', 'wed': 'Wed',
+        'thursday': 'Thu', 'thu': 'Thu', 'thur': 'Thu', 'thurs': 'Thu',
+        'friday': 'Fri', 'fri': 'Fri',
+        'saturday': 'Sat', 'sat': 'Sat',
+    }
+
+    try:
+        doc = fitz.open(file_path)
+        full_text = "\n".join(page.get_text("text") for page in doc)
+        lines = [re.sub(r'\s+', ' ', str(line).replace('\xa0', ' ')).strip() for line in full_text.splitlines()]
+
+        day_blocks = []
+        current_day = None
+        current_lines = []
+
+        def _flush_current_day():
+            nonlocal current_day, current_lines
+            if current_day and current_lines:
+                day_blocks.append((current_day, ' '.join(current_lines).strip()))
+            current_day = None
+            current_lines = []
+
+        for line in lines:
+            if not line:
+                continue
+
+            matched_day = None
+            lower_line = line.lower()
+            for alias, canonical_day in day_aliases.items():
+                if re.match(rf'^{re.escape(alias)}\b', lower_line):
+                    matched_day = canonical_day
+                    break
+
+            if matched_day:
+                _flush_current_day()
+                current_day = matched_day
+                remainder = re.sub(
+                    r'^(?:Monday|Mon|Tuesday|Tue|Tues|Wednesday|Wed|Thursday|Thu|Thur|Thurs|Friday|Fri|Saturday|Sat)\b[:\s\-–]*',
+                    '',
+                    line,
+                    flags=re.I,
+                ).strip()
+                if remainder:
+                    current_lines.append(remainder)
+                continue
+
+            if current_day:
+                if re.search(r'\b(weekly workload|leisure/free|short breaks?|lunch breaks?|note:)\b', line, re.I):
+                    continue
+                current_lines.append(line)
+
+        _flush_current_day()
+
+        slots = []
+        for day, block_text in day_blocks:
+            cells = _teacher_timetable_cells_from_block(block_text)
+            if not cells:
+                continue
+
+            padded_cells = list(cells) + [''] * max(0, len(TEACHER_TIMETABLE_SLOT_DEFS) - len(cells))
+            for (slot_code, slot_label), cell_text in zip(TEACHER_TIMETABLE_SLOT_DEFS, padded_cells):
+                cleaned_text = re.sub(r'\s+', ' ', str(cell_text or '').strip())
+                status = 'leisure' if not cleaned_text or re.search(r'\b(leisure|free)\b', cleaned_text, re.I) else 'teaching'
+                slots.append({
+                    'day': day,
+                    'slot_code': slot_code,
+                    'slot_label': slot_label,
+                    'status': status,
+                    'subject': '' if status == 'leisure' else cleaned_text,
+                    'notes': '',
+                })
+
+        replace_teacher_timetable_slots(teacher_id, slots)
+        teaching_count = sum(1 for slot in slots if slot['status'] == 'teaching')
+        leisure_count = sum(1 for slot in slots if slot['status'] == 'leisure')
+        return True, f"Parsed teacher timetable with {teaching_count} teaching and {leisure_count} leisure slots."
+
+    except Exception as e:
+        print(f"Error parse_teacher_timetable_pdf: {e}")
+        import traceback
+        traceback.print_exc()
+        return False, str(e)
+
 # ...
 
 def resolve_timetable_scope(user, department, semester, requested_section):
@@ -3019,27 +3477,49 @@ def _parse_roll_numbers(prefix, raw, pad_len=None):
     rolls.extend(extras)
     return rolls
 
+
+def _build_usn_range(prefix, usn_from, usn_to, pad_len=None):
+    """Build an inclusive USN list from a numeric start/end range."""
+    start_text = str(usn_from or '').strip()
+    end_text = str(usn_to or '').strip()
+    if not start_text or not end_text:
+        return []
+    try:
+        start_num = int(start_text)
+        end_num = int(end_text)
+    except Exception:
+        return []
+
+    if pad_len is None:
+        pad_len = max(len(start_text), len(end_text), 3)
+    try:
+        pad_len = int(pad_len)
+    except Exception:
+        pad_len = 3
+
+    step = 1 if start_num <= end_num else -1
+    rolls = []
+    for number in range(start_num, end_num + step, step):
+        number_text = f"{number:0{pad_len}d}" if pad_len > 0 else str(number)
+        rolls.append(f"{prefix}{number_text}" if prefix else number_text)
+    return rolls
+
 def _allocate_benches(rooms, groups, seats_per_bench=3):
-    """Allocate student roll numbers column-wise with adjacency constraints."""
+    """Allocate student roll numbers column-wise with branch-diverse adjacency constraints."""
     from collections import deque
 
     queues = {g['name']: deque(g['rolls']) for g in groups}
     sem_by_group = {g['name']: g.get('semester') for g in groups}
     branch_by_group = {g['name']: str(g.get('branch') or '').strip().upper() for g in groups}
     section_by_group = {g['name']: str(g.get('section') or '').strip().upper() for g in groups}
+    subject_by_group = {g['name']: str(g.get('subject') or '').strip() for g in groups}
     remaining = {g['name']: len(g['rolls']) for g in groups}
-
-    def active_semesters():
-        return {sem_by_group.get(g) for g, cnt in remaining.items() if cnt > 0 and sem_by_group.get(g)}
+    branch_load = {branch_by_group.get(g['name'], ''): 0 for g in groups}
 
     def group_identity(group_name):
-        return (branch_by_group.get(group_name, ''), section_by_group.get(group_name, ''))
+        return branch_by_group.get(group_name, '')
 
     def pick_group(forbidden_sems, forbidden_keys):
-        # Prefer a different semester whenever 2+ semesters are still available.
-        active_sems = active_semesters()
-        strict_alternate = len(active_sems) > 1
-
         candidates = [
             g for g, cnt in remaining.items()
             if cnt > 0
@@ -3047,24 +3527,30 @@ def _allocate_benches(rooms, groups, seats_per_bench=3):
             and group_identity(g) not in forbidden_keys
         ]
 
-        if strict_alternate and candidates:
-            # Pick semester with highest remaining load first for better balancing.
-            sem_remaining = {}
-            for g in candidates:
-                sem = sem_by_group.get(g)
-                sem_remaining[sem] = sem_remaining.get(sem, 0) + remaining[g]
-            best_sem = max(sem_remaining, key=sem_remaining.get)
-            sem_candidates = [g for g in candidates if sem_by_group.get(g) == best_sem]
-            return max(sem_candidates, key=lambda g: remaining[g])
-
         if candidates:
-            return max(candidates, key=lambda g: remaining[g])
+            return min(
+                candidates,
+                key=lambda g: (
+                    branch_load.get(branch_by_group.get(g, ''), 0),
+                    -remaining[g],
+                    branch_by_group.get(g, ''),
+                    subject_by_group.get(g, ''),
+                ),
+            )
 
         # If all candidates violate adjacency, only then relax constraint.
         fallback = [g for g, cnt in remaining.items() if cnt > 0]
         if not fallback:
             return None
-        return max(fallback, key=lambda g: remaining[g])
+        return min(
+            fallback,
+            key=lambda g: (
+                branch_load.get(branch_by_group.get(g, ''), 0),
+                -remaining[g],
+                branch_by_group.get(g, ''),
+                subject_by_group.get(g, ''),
+            ),
+        )
 
     room_layouts = []
     for room in rooms:
@@ -3106,9 +3592,12 @@ def _allocate_benches(rooms, groups, seats_per_bench=3):
 
                     roll = queues[group].popleft()
                     remaining[group] -= 1
+                    branch_load[branch_by_group.get(group, '')] = branch_load.get(branch_by_group.get(group, ''), 0) + 1
                     bench_seats.append({
                         'group': group,
                         'semester': sem_by_group.get(group),
+                        'branch': branch_by_group.get(group, ''),
+                        'subject': subject_by_group.get(group, ''),
                         'roll': roll
                     })
 
@@ -3131,12 +3620,12 @@ def _allocate_benches(rooms, groups, seats_per_bench=3):
 def upload_timetable():
     if 'timetable_pdf' not in request.files:
         flash("No file selected", "error")
-        return redirect(url_for('hod_dashboard'))
+        return redirect(url_for('hod_staff_management'))
 
     file = request.files['timetable_pdf']
     if file.filename == '':
         flash("No file selected", "error")
-        return redirect(url_for('hod_dashboard'))
+        return redirect(url_for('hod_staff_management'))
 
     if file and allowed_file(file.filename):
         department = request.form.get('department')
@@ -3144,14 +3633,14 @@ def upload_timetable():
         section = (request.form.get('section') or '').strip().upper()
         if not section:
             flash("Please select a section for timetable upload.", "error")
-            return redirect(url_for('hod_dashboard'))
+            return redirect(url_for('hod_staff_management'))
         valid_section = any(
             str(s.get('semester')) == str(semester) and str(s.get('section')).upper() == section
             for s in (get_section_catalog(department) or [])
         )
         if not valid_section:
             flash("Invalid section for selected semester.", "error")
-            return redirect(url_for('hod_dashboard'))
+            return redirect(url_for('hod_staff_management'))
 
         import tempfile
         filename = secure_filename(file.filename)
@@ -3181,7 +3670,53 @@ def upload_timetable():
         else:
             flash(f"Timetable uploaded but parsing failed: {msg}", "warning")
 
-    return redirect(url_for('hod_dashboard'))
+    return redirect(url_for('hod_staff_management'))
+
+
+@app.route('/hod/upload-teacher-timetable', methods=['POST'])
+@login_required
+@hod_required
+def upload_teacher_timetable():
+    if 'teacher_timetable_pdf' not in request.files:
+        flash('No teacher timetable file selected', 'error')
+        return redirect(url_for('hod_staff_management'))
+
+    file = request.files['teacher_timetable_pdf']
+    if file.filename == '':
+        flash('No teacher timetable file selected', 'error')
+        return redirect(url_for('hod_staff_management'))
+
+    teacher_id = (request.form.get('teacher_id') or '').strip()
+    user = session.get('user') or {}
+    valid_teacher_ids = {str(t.get('id')) for t in (get_all_teachers(user.get('department')) or [])}
+    if teacher_id not in valid_teacher_ids:
+        flash('Please select a valid teacher.', 'error')
+        return redirect(url_for('hod_staff_management'))
+
+    if not file.filename.lower().endswith('.pdf'):
+        flash('Please upload a PDF teacher timetable.', 'error')
+        return redirect(url_for('hod_staff_management'))
+
+    import tempfile
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf', dir=tempfile.gettempdir())
+    file.save(tmp.name)
+    tmp.close()
+    tmp_path = tmp.name
+
+    try:
+        success, msg = parse_teacher_timetable_pdf(tmp_path, teacher_id)
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+    if success:
+        flash(msg, 'success')
+    else:
+        flash(f'Teacher timetable upload failed: {msg}', 'error')
+
+    return redirect(url_for('hod_staff_management', teacher_timetable_teacher=teacher_id))
 
 @app.route('/hod/upload-calendar', methods=['POST'])
 @login_required
@@ -3239,13 +3774,14 @@ def clear_calendar():
 @hod_required
 def bench_allotment():
     user = session.get('user') or {}
+    exam_meta = {}
     if request.method == 'GET':
         rooms = [
             {'room': '203', 'rows': 5, 'cols': 4},
         ]
         groups = [
-            {'name': 'Sem 6 - CS - A', 'semester': '6', 'branch': 'CS', 'section': 'A', 'prefix': '1GD23CS', 'rolls_raw': '001-060', 'pad_len': '3'},
-            {'name': 'Sem 6 - CS - B', 'semester': '6', 'branch': 'CS', 'section': 'B', 'prefix': '1GD23CS', 'rolls_raw': '001-045', 'pad_len': '3'}
+            {'name': 'CSE - Data Structures', 'department': 'CSE', 'semester': '4', 'section': 'A', 'branch': 'CSE', 'subject': 'Data Structures', 'usn_prefix': '1GD23CS', 'usn_from': '001', 'usn_to': '060', 'pad_len': '3'},
+            {'name': 'ISE - OOP', 'department': 'ISE', 'semester': '4', 'section': 'A', 'branch': 'ISE', 'subject': 'OOP', 'usn_prefix': '1GD23IS', 'usn_from': '001', 'usn_to': '045', 'pad_len': '3'}
         ]
         return render_template(
             'bench_allotment.html',
@@ -3253,10 +3789,17 @@ def bench_allotment():
             rooms=rooms,
             groups=groups,
             seats_per_bench=3,
-            result=None
+            result=None,
+            exam_meta=exam_meta,
         )
 
     # POST
+    exam_date = (request.form.get('exam_date') or '').strip()
+    exam_time = (request.form.get('exam_time') or '').strip()
+    department = (request.form.get('department') or user.get('department') or '').strip()
+    semester = (request.form.get('semester') or '').strip()
+    section = (request.form.get('section') or '').strip().upper()
+    exam_name = (request.form.get('exam_name') or '').strip()
     seats_per_bench = int(request.form.get('seats_per_bench') or 3)
     room_names = request.form.getlist('room_name[]')
     room_rows = request.form.getlist('room_rows[]')
@@ -3273,33 +3816,72 @@ def bench_allotment():
         })
 
     group_names = request.form.getlist('group_name[]')
+    group_departments = request.form.getlist('group_department[]')
     group_semesters = request.form.getlist('group_semester[]')
     group_branches = request.form.getlist('group_branch[]')
     group_sections = request.form.getlist('group_section[]')
-    group_prefixes = request.form.getlist('group_prefix[]')
-    group_rolls = request.form.getlist('group_rolls[]')
+    group_subjects = request.form.getlist('group_subject[]')
+    group_prefixes = request.form.getlist('group_usn_prefix[]')
+    group_usn_from = request.form.getlist('group_usn_from[]')
+    group_usn_to = request.form.getlist('group_usn_to[]')
     group_pad = request.form.getlist('group_pad[]')
 
+    group_count = max(
+        len(group_names),
+        len(group_departments),
+        len(group_semesters),
+        len(group_branches),
+        len(group_sections),
+        len(group_subjects),
+        len(group_prefixes),
+        len(group_usn_from),
+        len(group_usn_to),
+        len(group_pad),
+    )
+
     groups = []
-    for idx, name in enumerate(group_names):
-        label = (name or '').strip() or f"Group {idx + 1}"
+    for idx in range(group_count):
+        name = group_names[idx] if idx < len(group_names) else ''
+        branch = (group_branches[idx] or '').strip().upper()
+        subject = (group_subjects[idx] or '').strip()
+        label = (name or '').strip() or f"{branch} - {subject}".strip(' -') or f"Group {idx + 1}"
         sem = (group_semesters[idx] or '').strip()
+        dept = (group_departments[idx] or '').strip()
+        section_text = (group_sections[idx] or '').strip().upper()
         prefix = (group_prefixes[idx] or '').strip()
-        rolls_raw = group_rolls[idx] if idx < len(group_rolls) else ''
+        usn_from = (group_usn_from[idx] or '').strip()
+        usn_to = (group_usn_to[idx] or '').strip()
         pad_len = group_pad[idx] if idx < len(group_pad) else ''
-        rolls = _parse_roll_numbers(prefix, rolls_raw, pad_len)
+        rolls = _build_usn_range(prefix, usn_from, usn_to, pad_len)
         if not rolls:
             continue
         groups.append({
             'name': label,
+            'department': dept or department,
             'semester': sem,
-            'branch': (group_branches[idx] or '').strip().upper(),
-            'section': (group_sections[idx] or '').strip().upper(),
+            'branch': branch,
+            'section': section_text,
+            'subject': subject,
             'prefix': prefix,
-            'rolls_raw': rolls_raw,
+            'usn_from': usn_from,
+            'usn_to': usn_to,
             'pad_len': pad_len,
             'rolls': rolls
         })
+
+    if not (department and semester and section and exam_name):
+        flash("Please fill department, semester, section, and exam name.", "error")
+        return render_template(
+            'bench_allotment.html',
+            user=user,
+            rooms=rooms if rooms else [{'room': '203', 'rows': 5, 'cols': 4}],
+            groups=groups if groups else [
+                {'name': 'CSE - Data Structures', 'department': department or user.get('department') or 'CSE', 'semester': semester or '4', 'section': section or 'A', 'branch': 'CSE', 'subject': 'Data Structures', 'prefix': '1GD23CS', 'usn_from': '001', 'usn_to': '060', 'pad_len': '3', 'rolls': _build_usn_range('1GD23CS', '001', '060', '3')},
+            ],
+            seats_per_bench=seats_per_bench,
+            result=None,
+            exam_meta=exam_meta,
+        )
 
     if not rooms:
         flash("Add at least one classroom to generate blueprint.", "error")
@@ -3307,17 +3889,18 @@ def bench_allotment():
             'bench_allotment.html',
             user=user,
             rooms=[{'room': '203', 'rows': 5, 'cols': 4}],
-            groups=groups if groups else [{'name': 'Sem 6 - CS', 'semester': '6', 'branch': 'CS', 'section': 'A', 'prefix': '1GD23CS', 'rolls_raw': '', 'pad_len': '3'}],
+            groups=groups if groups else [{'name': 'CSE - Data Structures', 'department': department or user.get('department') or 'CSE', 'semester': semester or '4', 'section': section or 'A', 'branch': 'CSE', 'subject': 'Data Structures', 'prefix': '1GD23CS', 'usn_from': '001', 'usn_to': '060', 'pad_len': '3', 'rolls': _build_usn_range('1GD23CS', '001', '060', '3')}],
             seats_per_bench=seats_per_bench,
-            result=None
+            result=None,
+            exam_meta=exam_meta,
         )
     if not groups:
-        flash("Add at least one student group with roll numbers.", "error")
+        flash("Add at least one branch/subject group with a USN range.", "error")
         return render_template(
             'bench_allotment.html',
             user=user,
             rooms=rooms,
-            groups=[{'name': 'Sem 6 - CS', 'semester': '6', 'branch': 'CS', 'section': 'A', 'prefix': '1GD23CS', 'rolls_raw': '', 'pad_len': '3'}],
+            groups=[{'name': 'CSE - Data Structures', 'department': department or user.get('department') or 'CSE', 'semester': semester or '4', 'section': section or 'A', 'branch': 'CSE', 'subject': 'Data Structures', 'prefix': '1GD23CS', 'usn_from': '001', 'usn_to': '060', 'pad_len': '3', 'rolls': _build_usn_range('1GD23CS', '001', '060', '3')}],
             seats_per_bench=seats_per_bench,
             result=None
         )
@@ -3337,8 +3920,13 @@ def bench_allotment():
                     if not seat:
                         continue
                     g = seat['group']
-                    summary[room_key].setdefault(g, [])
-                    summary[room_key][g].append(seat['roll'])
+                    summary[room_key].setdefault(g, {
+                        'branch': seat.get('branch') or '',
+                        'subject': seat.get('subject') or '',
+                        'semester': seat.get('semester') or '',
+                        'rolls': [],
+                    })
+                    summary[room_key][g]['rolls'].append(seat['roll'])
 
     group_totals = {g['name']: len(g['rolls']) for g in groups}
     assigned_counts = {k: 0 for k in group_totals}
@@ -3356,6 +3944,8 @@ def bench_allotment():
         if remaining:
             unallocated.append({
                 'group': g['name'],
+                'branch': g.get('branch'),
+                'subject': g.get('subject'),
                 'semester': g.get('semester'),
                 'remaining': remaining
             })
@@ -3374,12 +3964,48 @@ def bench_allotment():
         'unallocated': unallocated
     }
 
+    # If user requested CSV download, stream the blueprint as CSV
+    if (request.form.get('action') or '').strip() == 'download_csv':
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(['Room', 'Row', 'Column', 'BenchSeat', 'USN', 'Branch', 'Subject', 'Semester'])
+        for room in room_layouts:
+            room_name = room.get('room')
+            for row_idx, row in enumerate(room.get('layout', []), start=1):
+                for col_idx, bench in enumerate(row, start=1):
+                    for seat_idx, seat in enumerate(bench, start=1):
+                        if not seat:
+                            writer.writerow([room_name, row_idx, col_idx, seat_idx, '', '', '', ''])
+                        else:
+                            writer.writerow([
+                                room_name,
+                                row_idx,
+                                col_idx,
+                                seat_idx,
+                                seat.get('roll') or '',
+                                seat.get('branch') or '',
+                                seat.get('subject') or '',
+                                seat.get('semester') or '',
+                            ])
+        csv_data = output.getvalue()
+        output.close()
+        filename = f"bench_blueprint_{(exam_name or 'exam').replace(' ','_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        return send_file(io.BytesIO(csv_data.encode('utf-8-sig')), mimetype='text/csv', as_attachment=True, download_name=filename)
+
     return render_template(
         'bench_allotment.html',
         user=user,
         rooms=rooms,
         groups=groups,
         seats_per_bench=seats_per_bench,
+        exam_meta={
+            'exam_date': exam_date,
+            'exam_time': exam_time,
+            'department': department,
+            'semester': semester,
+            'section': section,
+            'exam_name': exam_name,
+        },
         result=result
     )
 
@@ -3446,16 +4072,196 @@ def hod_my_papers():
                          current_user=user,
                          show_navbar=True)
 
-# ── NEW: Teacher Examination Duty Allotment ──────────────────────────────────
-@app.route('/hod/teacher-duty')
+# ── Examination Duty Allotment ───────────────────────────────────────────────
+@app.route('/hod/teacher-duty', methods=['GET', 'POST'])
 @login_required
 @hod_required
 def hod_teacher_duty():
     user = session.get('user') or {}
-    return render_template('hod_teacher_duty.html',
-                           user=user,
-                           current_user=user,
-                           show_navbar=True)
+    department = user.get('department')
+
+    if request.method == 'POST':
+        action = (request.form.get('action') or '').strip()
+
+        if action == 'save_exam':
+            exam_id = request.form.get('exam_id') or None
+            exam_date = (request.form.get('exam_date') or '').strip()
+            day = (request.form.get('day') or '').strip()
+            slot = (request.form.get('slot') or '').strip()
+            subject = (request.form.get('subject') or '').strip()
+            branch = (request.form.get('branch') or '').strip()
+            semester = (request.form.get('semester') or '').strip()
+            room = (request.form.get('room') or '').strip()
+            active = 1 if request.form.get('active') == 'on' else 0
+
+            if not (exam_date and day and slot and subject):
+                flash('Please fill in the date, day, slot, and subject.', 'error')
+                return redirect(url_for('hod_teacher_duty'))
+
+            save_exam_duty_exam(
+                exam_id=exam_id,
+                department=department,
+                exam_date=exam_date,
+                day=day,
+                slot=slot,
+                subject=subject,
+                branch=branch,
+                semester=semester,
+                room=room,
+                active=active,
+            )
+            flash('Exam slot saved successfully.', 'success')
+            return redirect(url_for('hod_teacher_duty'))
+
+        if action == 'delete_exam':
+            exam_id = request.form.get('exam_id')
+            if exam_id:
+                delete_exam_duty_exam(exam_id)
+                flash('Exam slot deleted.', 'success')
+            return redirect(url_for('hod_teacher_duty'))
+
+        if action == 'save_teacher':
+            teacher_id = (request.form.get('teacher_id') or '').strip()
+            if teacher_id:
+                max_duties = request.form.get('max_duties') or 3
+                active = 1 if request.form.get('active') == 'on' else 0
+                notes = (request.form.get('notes') or '').strip() or None
+                upsert_exam_duty_teacher_setting(teacher_id, max_duties=max_duties, active=active, notes=notes)
+                flash('Teacher duty settings updated.', 'success')
+            return redirect(url_for('hod_teacher_duty'))
+
+        if action == 'save_assignment':
+            exam_id = request.form.get('exam_id')
+            teacher_id = (request.form.get('teacher_id') or '').strip()
+            if exam_id and teacher_id:
+                save_exam_duty_assignment(exam_id, teacher_id)
+                flash('Duty assignment updated.', 'success')
+            return redirect(url_for('hod_teacher_duty'))
+
+        if action == 'generate':
+            exams = get_exam_duty_exams(department=department, active_only=True)
+            teachers = get_exam_duty_teacher_settings(department=department)
+            allotments = _generate_exam_duty_allotments(exams, teachers)
+            clear_exam_duty_assignments(department=department)
+            for allotment in allotments:
+                save_exam_duty_assignment(allotment['exam_id'], allotment['teacher_id'])
+            flash(f'Generated duty allotments for {len(allotments)} exam slots.', 'success')
+            return redirect(url_for('hod_teacher_duty'))
+
+        if action == 'clear_assignments':
+            clear_exam_duty_assignments(department=department)
+            flash('All exam duty assignments cleared.', 'success')
+            return redirect(url_for('hod_teacher_duty'))
+
+        flash('Unknown action.', 'error')
+        return redirect(url_for('hod_teacher_duty'))
+
+    edit_exam_id = request.args.get('edit_exam')
+    edit_exam = None
+    if edit_exam_id:
+        try:
+            edit_exam_id = int(edit_exam_id)
+        except (TypeError, ValueError):
+            edit_exam_id = None
+        if edit_exam_id:
+            for exam in get_exam_duty_exams(department=department):
+                if int(exam.get('id') or 0) == edit_exam_id:
+                    edit_exam = exam
+                    break
+
+    teachers = get_exam_duty_teacher_settings(department=department)
+    exams = get_exam_duty_exams(department=department)
+    assignments = get_exam_duty_assignments(department=department)
+
+    teacher_load = {teacher['id']: 0 for teacher in teachers}
+    assignment_map = {}
+    for assignment in assignments:
+        teacher_load[assignment['teacher_id']] = teacher_load.get(assignment['teacher_id'], 0) + 1
+        assignment_map[assignment['exam_id']] = assignment
+
+    total_teachers = len(teachers)
+    active_teachers = sum(1 for teacher in teachers if int(teacher.get('active', 1)))
+    active_exams = sum(1 for exam in exams if int(exam.get('active', 1)))
+    assigned_count = len(assignments)
+    unassigned_count = max(0, active_exams - assigned_count)
+    avg_duty = round(assigned_count / active_teachers, 1) if active_teachers else 0
+
+    teacher_rows = []
+    for teacher in teachers:
+        teacher_rows.append({
+            **teacher,
+            'assigned_count': teacher_load.get(teacher['id'], 0),
+        })
+
+    exam_rows = []
+    for exam in exams:
+        exam_rows.append({
+            **exam,
+            'assignment': assignment_map.get(exam['id']),
+        })
+
+    return render_template(
+        'hod_teacher_duty.html',
+        user=user,
+        current_user=user,
+        show_navbar=True,
+        teachers=teacher_rows,
+        exams=exam_rows,
+        assignments=assignments,
+        edit_exam=edit_exam,
+        stats={
+            'total_teachers': total_teachers,
+            'active_teachers': active_teachers,
+            'active_exams': active_exams,
+            'assigned_count': assigned_count,
+            'unassigned_count': unassigned_count,
+            'avg_duty': avg_duty,
+        },
+    )
+
+
+@app.route('/hod/teacher-duty/csv')
+@login_required
+@hod_required
+def hod_teacher_duty_csv():
+    user = session.get('user') or {}
+    department = user.get('department')
+    assignments = get_exam_duty_assignments(department=department)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        'Exam Date', 'Day', 'Slot', 'Subject', 'Branch', 'Semester', 'Room',
+        'Teacher Name', 'Teacher Email', 'Max Duties', 'Assignment Created At'
+    ])
+
+    for item in assignments:
+        writer.writerow([
+            item.get('exam_date') or '',
+            item.get('day') or '',
+            item.get('slot') or '',
+            item.get('subject') or '',
+            item.get('branch') or '',
+            item.get('semester') or '',
+            item.get('room') or '',
+            item.get('teacher_name') or '',
+            item.get('teacher_email') or '',
+            item.get('max_duties') or '',
+            item.get('created_at') or '',
+        ])
+
+    csv_data = output.getvalue()
+    output.close()
+
+    filename = f"exam_duty_allotments_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    response = send_file(
+        io.BytesIO(csv_data.encode('utf-8-sig')),
+        mimetype='text/csv',
+        as_attachment=True,
+        download_name=filename,
+    )
+    response.headers['Cache-Control'] = 'no-store'
+    return response
 
 # ── NEW: Student Smart Bench Allotment ───────────────────────────────────────
 @app.route('/hod/smart-bench')
@@ -3463,10 +4269,26 @@ def hod_teacher_duty():
 @hod_required
 def hod_smart_bench():
     user = session.get('user') or {}
+    department = user.get('department')
+    section_catalog = get_section_catalog(department) or []
+    subject_rows = get_subject_catalog(department) or []
+    # Build curriculum mapping: { branch: { semester: [subject_name,...] } }
+    curriculum = {}
+    for s in subject_rows:
+        br = s.get('department') or ''
+        sem = str(s.get('semester') or '')
+        name = s.get('subject_name') or s.get('subject_code') or ''
+        curriculum.setdefault(br, {})
+        curriculum[br].setdefault(sem, [])
+        if name not in curriculum[br][sem]:
+            curriculum[br][sem].append(name)
+
     return render_template('hod_smart_bench.html',
                            user=user,
                            current_user=user,
-                           show_navbar=True)
+                           show_navbar=True,
+                           curriculum_json=json.dumps(curriculum),
+                           section_catalog=section_catalog)
 
 if __name__ == '__main__':
     app.run(debug=True, port=8080)

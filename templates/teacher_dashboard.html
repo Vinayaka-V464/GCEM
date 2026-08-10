@@ -71,6 +71,43 @@
             </div>
         </div>
 
+        <div class="card fade-in mt-4" style="animation-delay: 0.18s;">
+            <div class="section-label">Your Weekly Timetable</div>
+            <h3 class="h4 mb-2" style="color: var(--green-primary);">Leisure periods are used for invigilation planning</h3>
+            <p class="text-muted" style="margin-bottom: 16px;">This view comes from the same teacher timetable data the HOD edits. Only leisure slots are used when duties are generated.</p>
+
+            {% if teacher_timetable_exists %}
+            <div class="tt-preview-grid">
+                <div class="tt-preview-row">
+                    <div class="tt-preview-head">Day</div>
+                    {% for slot in teacher_timetable[0].slots %}
+                    <div class="tt-preview-head">{{ slot.slot_label }}</div>
+                    {% endfor %}
+                </div>
+                {% for row in teacher_timetable %}
+                <div class="tt-preview-row">
+                    <div class="tt-preview-day">{{ row.day }}</div>
+                    {% for slot in row.slots %}
+                    <div class="tt-preview-cell">
+                        <span class="tt-status tt-status-{{ slot.status|lower }}">{{ slot.status|capitalize }}</span>
+                        {% if slot.subject %}
+                        <div style="font-weight:600;color:var(--brown);line-height:1.35;">{{ slot.subject }}</div>
+                        {% else %}
+                        <div class="tt-subject-note">No class text stored</div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <div class="empty-title">No timetable saved yet</div>
+                <p class="text-muted">Ask the HOD to enter your timetable so invigilation can be planned from leisure hours.</p>
+            </div>
+            {% endif %}
+        </div>
+
         <div class="card fade-in mt-4" style="animation-delay: 0.2s;">
             <div class="section-label">Signature</div>
             <h3 class="h4 mb-3" style="color: var(--green-primary);">Upload your signature for paper submission</h3>
@@ -268,6 +305,66 @@
     .stat-card-click:hover {
         transform: translateY(-2px);
         box-shadow: var(--hover-shadow);
+    }
+
+    .tt-preview-grid {
+        display: grid;
+        gap: 10px;
+        overflow-x: auto;
+    }
+
+    .tt-preview-row {
+        display: grid;
+        grid-template-columns: 72px repeat(7, minmax(110px, 1fr));
+        gap: 6px;
+        align-items: stretch;
+        min-width: 860px;
+    }
+
+    .tt-preview-head,
+    .tt-preview-day,
+    .tt-preview-cell {
+        border-radius: 12px;
+        padding: 10px 8px;
+        border: 1px solid var(--glass-card-border);
+        background: var(--glass-bg);
+        font-size: 0.8rem;
+    }
+
+    .tt-preview-head {
+        text-align: center;
+        font-weight: 700;
+        color: var(--brown);
+    }
+
+    .tt-preview-day {
+        display: flex;
+        align-items: center;
+        font-weight: 700;
+        color: var(--green-primary);
+        justify-content: center;
+    }
+
+    .tt-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: 999px;
+        padding: 5px 10px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        margin-bottom: 6px;
+    }
+
+    .tt-status-leisure { background: var(--green-bg); color: var(--green-primary); }
+    .tt-status-teaching { background: var(--orange-light); color: var(--brown); }
+    .tt-status-break,
+    .tt-status-lunch { background: var(--cream-dark); color: var(--brown); }
+
+    .tt-subject-note {
+        font-size: 0.76rem;
+        color: var(--text-secondary);
+        line-height: 1.35;
     }
 </style>
 {% endblock %}

@@ -84,38 +84,6 @@
             <h3 class="h4 mb-3" style="color: var(--green-primary);">Upload & Manage Schedules</h3>
 
             <div style="display: flex; gap: 24px; flex-wrap: wrap;">
-                <!-- Timetable Upload -->
-                <div style="flex: 1; min-width: 300px;">
-                    <h4 class="h5 mb-2">Class Timetable</h4>
-                    <form action="/hod/upload-timetable" method="POST" enctype="multipart/form-data">
-                        <div class="form-group">
-                            <label for="tt-sem" style="font-size: 0.875rem;">Semester</label>
-                            <select name="semester" id="tt-sem" class="form-input" onchange="syncTimetableSections()">
-                                {% for sem in semester_options %}
-                                <option value="{{ sem }}">{{ sem }}{% if sem == '1' %}st{% elif sem == '2' %}nd{% elif
-                                    sem == '3' %}rd{% else %}th{% endif %} Semester</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="tt-section" style="font-size: 0.875rem;">Section</label>
-                            <select name="section" id="tt-section" class="form-input">
-                                <option value="">Select Section</option>
-                                {% for sec in section_catalog %}
-                                <option value="{{ sec.section }}" data-sem="{{ sec.semester }}">Sem {{ sec.semester }} -
-                                    {{ sec.section }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <input type="hidden" name="department" value="{{ user.department }}">
-                        <div class="form-group">
-                            <input type="file" class="form-input" name="timetable_pdf" accept=".pdf" required>
-                        </div>
-                        <button type="submit" class="btn btn-sm btn-secondary">Upload & Parse Timetable</button>
-                    </form>
-                </div>
-
-                <!-- Calendar Upload -->
                 <div style="flex: 1; min-width: 300px;">
                     <h4 class="h5 mb-2">Calendar of Events</h4>
                     <form action="/hod/upload-calendar" method="POST" enctype="multipart/form-data">
@@ -150,6 +118,12 @@
                         <button type="submit" class="btn btn-sm btn-outline">Clear Calendar Events</button>
                     </form>
                 </div>
+
+                <div style="flex: 1; min-width: 300px;">
+                    <h4 class="h5 mb-2">Class Timetable</h4>
+                    <p class="text-muted" style="font-size: 0.875rem; margin-bottom: 12px;">Timetable parsing now lives in Staff Management so it stays close to teacher setup and section management.</p>
+                    <a href="{{ url_for('hod_staff_management') }}" class="btn btn-secondary">Open Staff Management</a>
+                </div>
             </div>
 
             <div class="mt-3">
@@ -178,52 +152,33 @@
         </div>
 
         <div class="card fade-in mt-4" style="animation-delay: 0.28s;">
-            <div class="section-label">Previous Year Question Paper Analysis</div>
-            <h3 class="h4 mb-2" style="color: var(--green-primary);">Upload previous year papers and find repeated questions</h3>
-            <p class="text-muted" style="margin-bottom: 12px;">Upload one or more PDF papers and view the most repeated questions. You can choose how many results to show (for example 10 or 15).</p>
-
-            <form action="/hod/analyze-question-papers" method="POST" enctype="multipart/form-data">
-                <div class="form-group">
-                    <label class="form-label">Question Papers (PDF)</label>
-                    <input type="file" class="form-input" name="question_papers" accept=".pdf" multiple required>
+            <div class="section-label">Previous Year Question Papers</div>
+            <div style="display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; align-items:flex-start;">
+                <div style="max-width: 760px;">
+                    <h3 class="h4 mb-2" style="color: var(--green-primary);">Open the dedicated analysis studio</h3>
+                    <p class="text-muted" style="margin-bottom: 12px;">Upload multiple past papers, detect repeated questions, and review trends with a richer summary page.</p>
                 </div>
-                <div class="form-group" style="max-width: 220px;">
-                    <label class="form-label">Show Top Results</label>
-                    <input type="number" class="form-input" name="top_n" min="5" max="50" value="{{ question_analysis.top_n if question_analysis else 10 }}">
+                <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                    <a href="{{ url_for('hod_question_paper_analysis') }}" class="btn btn-secondary">Open Analysis Page</a>
                 </div>
-                <button type="submit" class="btn btn-secondary">Analyze Repeated Questions</button>
-            </form>
-
-            {% if question_analysis %}
-            <div class="mt-4">
-                <div class="text-muted" style="margin-bottom: 10px;">
-                    Analyzed {{ question_analysis.total_questions }} extracted questions from {{ question_analysis.files|length }} uploaded PDF(s).
-                </div>
-                {% if question_analysis.results %}
-                <div style="display: grid; gap: 10px;">
-                    {% for item in question_analysis.results %}
-                    <div style="border: 1px solid var(--glass-card-border); border-radius: 12px; padding: 12px; background: var(--glass-bg);">
-                        <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:6px;">
-                            <strong>{{ loop.index }}.</strong>
-                            <span class="badge" style="background: var(--green-bg); color: var(--green-primary);">Repeated {{ item.count }} times</span>
-                        </div>
-                        <div style="color: var(--brown); line-height: 1.5; margin-bottom: 8px;">{{ item.question }}</div>
-                        <div style="font-size: 0.9rem; color: var(--muted);">
-                            <div><strong>Matched in:</strong></div>
-                            <ul style="margin: 6px 0 0 18px; padding: 0;">
-                                {% for occurrence in item.occurrences %}
-                                <li><strong>{{ occurrence.paper_name }}</strong> — {{ occurrence.year }}</li>
-                                {% endfor %}
-                            </ul>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <div class="alert alert-warning">No repeated questions were found from the uploaded papers.</div>
-                {% endif %}
             </div>
-            {% endif %}
+            <div style="margin-top: 16px; display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
+                <div class="step-card">
+                    <div class="step-number">1</div>
+                    <h4 class="h4">Upload PDFs</h4>
+                    <p class="text-muted">Select one or more previous-year question papers.</p>
+                </div>
+                <div class="step-card">
+                    <div class="step-number">2</div>
+                    <h4 class="h4">Find repeats</h4>
+                    <p class="text-muted">The app groups matching questions across files.</p>
+                </div>
+                <div class="step-card">
+                    <div class="step-number">3</div>
+                    <h4 class="h4">Review trends</h4>
+                    <p class="text-muted">See which questions recur most often and across how many papers.</p>
+                </div>
+            </div>
         </div>
 
         <!-- Quick Actions -->

@@ -119,7 +119,19 @@
        <option value="">— Subject —</option>
       </select>
      </div>
-     <button class="btn btn-secondary" onclick="addGroup()" style="align-self:flex-end;">+ Add to Exam</button>
+    <div>
+     <label class="form-label" style="font-size:.8rem;">USN Prefix</label>
+     <input class="form-input" id="addUSNPrefix" placeholder="1GD23CSE" style="min-width:140px;">
+    </div>
+    <div>
+     <label class="form-label" style="font-size:.8rem;">From</label>
+     <input class="form-input" id="addUSNFrom" placeholder="001" style="min-width:80px;">
+    </div>
+    <div>
+     <label class="form-label" style="font-size:.8rem;">To</label>
+     <input class="form-input" id="addUSNTo" placeholder="060" style="min-width:80px;">
+    </div>
+    <button class="btn btn-secondary" onclick="addGroup()" style="align-self:flex-end;">+ Add to Exam</button>
     </div>
    </div>
 
@@ -138,12 +150,30 @@
    <div class="step-card">
     <div class="step-num">Step 3 — Generate</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;">
+     <label class="form-label" style="font-size:.8rem;align-self:center;">Allocation Mode</label>
+     <select class="form-input" id="allocMode" style="min-width:200px;align-self:center;">
+       <option value="diverse">Branch-diverse (default)</option>
+       <option value="sequential">Sequential USN order (easy collection)</option>
+     </select>
      <button class="btn btn-primary" onclick="generateSeating()">🎯 Generate Seating</button>
      <button class="btn btn-outline"  onclick="shuffleSeating()">🔀 Shuffle Again</button>
      <button class="btn btn-secondary" onclick="exportExcel()">📊 Export Excel</button>
-     <button class="btn btn-outline"  onclick="clearAll()">🗑️ Clear All</button>
-     <button class="btn btn-outline"  onclick="window.print()">🖨️ Print</button>
+    <button class="btn btn-outline"  onclick="clearAll()">🗑️ Clear All</button>
     </div>
+   </div>
+
+   <!-- Rooms configuration -->
+   <div class="step-card">
+    <div class="step-num">Room Configuration</div>
+    <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:10px;">Add rooms and their bench counts (or rows × cols). The allocator will fill rooms in the order you add them.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+      <input class="form-input" id="rmName" placeholder="Room name (e.g. R301)" style="min-width:160px;">
+      <input class="form-input" id="rmBenches" placeholder="Benches (e.g. 40)" style="width:120px;">
+      <input class="form-input" id="rmRows" placeholder="Rows (optional)" style="width:120px;">
+      <input class="form-input" id="rmCols" placeholder="Cols (optional)" style="width:120px;">
+      <button class="btn btn-secondary" onclick="addRoom()">+ Add room</button>
+    </div>
+    <div id="roomList" style="margin-top:8px;color:var(--text-secondary);">No rooms configured — using defaults.</div>
    </div>
 
   </div><!-- /card -->
@@ -198,98 +228,8 @@
 {% endblock %}
 {% block scripts %}
 <script>
-/* ── Curriculum ─────────────────────────────────────────────────── */
-var CURRICULUM = {
-  "CSE":{"3":["Data Structures","Digital Design","Discrete Mathematics","Computer Organization"],
-         "4":["Algorithms","Operating Systems","OOP with Java","Microcontrollers"],
-         "5":["DBMS","Computer Networks","Automata Theory","Software Engineering"],
-         "6":["Compiler Design","Distributed Systems","Information Security","Web Technologies"],
-         "7":["Machine Learning","Cloud Computing","Big Data Analytics","IoT"],
-         "8":["Deep Learning","Blockchain","Capstone Project","NLP"]},
-  "CSE AI-ML":{"5":["ML Fundamentals","Python for Data Science","Statistics for AI","Linear Algebra"],
-               "6":["Deep Learning","Computer Vision","Reinforcement Learning","AI Ethics"],
-               "7":["NLP","Advanced ML","Autonomous Systems","Cloud Computing"],
-               "8":["Generative AI","AI Capstone","Edge AI","MLOps"]},
-  "ISE":{"3":["Data Structures","Digital Electronics","C++ Programming","Mathematics III"],
-         "4":["Operating Systems","Algorithms","OOP with Java","Database Systems"],
-         "5":["DBMS","Computer Networks","Software Engineering","Information Security"],
-         "6":["Cloud Computing","Web Development","Mobile Computing","Cyber Security"],
-         "7":["Big Data Analytics","IoT","DevOps","Machine Learning"],
-         "8":["Blockchain","AI Applications","Capstone Project","Digital Tech"]},
-  "AE":{"3":["Engineering Mechanics","Fluid Mechanics I","Thermodynamics I","Materials Science"],
-        "4":["Aerodynamics I","Aircraft Structures I","Propulsion I","Flight Mechanics"],
-        "5":["Aerodynamics II","Aircraft Structures II","Control Systems","Avionics"],
-        "6":["Aircraft Design","Propulsion II","CFD","Stability & Control"],
-        "7":["FEA","Spacecraft Technology","Turbomachinery","Aircraft Performance"],
-        "8":["Advanced Composites","Experimental Aerodynamics","Capstone Project","UAV Systems"]},
-  "ECE":{"3":["Network Analysis","Electronic Devices","Digital Electronics","Signals & Systems"],
-         "4":["Analog Circuits","Microprocessors","Communication Systems I","EM Theory"],
-         "5":["Digital Communication","VLSI Design","Embedded Systems","Control Systems"],
-         "6":["Wireless Communication","DSP","RF Engineering","Optical Communication"],
-         "7":["Advanced VLSI","IoT Systems","Image Processing","Communication Networks"],
-         "8":["5G Technology","Photonics","Capstone Project","Radar & Navigation"]}
-};
-
-/* ── Unique student generation ──────────────────────────────────── */
-/* 50 first names × 50 last names = 2500 unique combos, more than enough */
-var FN=["Rahul","Ananya","Kiran","Priya","Arjun","Deepa","Suresh","Meena","Vijay","Lakshmi",
-        "Arun","Kavya","Mohan","Shreya","Ravi","Pooja","Rajesh","Divya","Nikhil","Sneha",
-        "Amit","Riya","Sanjay","Nandini","Tejas","Bhavya","Rohan","Asha","Vivek","Keerthi",
-        "Pranav","Swati","Harsh","Ankita","Siddharth","Pallavi","Yash","Tanvi","Ishaan","Diya",
-        "Varun","Shruti","Gaurav","Neha","Akash","Komal","Sagar","Mansi","Vishal","Poornima"];
-var LN=["Kumar","Sharma","Reddy","Naik","Rao","Patel","Verma","Singh","Joshi","Nair",
-        "Pillai","Hegde","Murthy","Gowda","Shetty","Iyer","Bhat","Krishnan","Desai","Mehta",
-        "Kulkarni","Mishra","Pandey","Gupta","Tiwari","Chauhan","Shah","Jain","Sen","Das",
-        "Ghosh","Roy","Mukherjee","Banerjee","Chatterjee","Bose","Dutta","Biswas","Paul","Nanda",
-        "Kaur","Malhotra","Kapoor","Arora","Bhatia","Chandra","Dubey","Saxena","Tripathi","Shukla"];
-
-var COUNTS={"CSE":{"3":55,"4":55,"5":58,"6":58,"7":52,"8":48},
-            "CSE AI-ML":{"5":42,"6":44,"7":40,"8":36},
-            "ISE":{"3":50,"4":50,"5":52,"6":52,"7":48,"8":44},
-            "AE":{"3":38,"4":38,"5":36,"6":36,"7":32,"8":28},
-            "ECE":{"3":50,"4":50,"5":48,"6":48,"7":44,"8":40}};
-
-/* Pre-build 2500 unique full names as a flat array: FN[i] + LN[j], i varies fast */
-var FULL_NAMES=(function(){
-  var names=[];
-  for(var j=0;j<LN.length;j++)
-    for(var i=0;i<FN.length;i++)
-      names.push(FN[i]+" "+LN[j]);
-  return names; /* 2500 entries, all distinct */
-})();
-
-/* Build ALL_STUDENTS keyed by "branch|semester" -> [student, ...] */
-/* Each branch+semester starts from a different offset in FULL_NAMES so names
-   don't repeat across branches within the same exam. */
-var STUDENT_DB={};
-(function(){
-  var uid=1;
-  var nameOffset=0; /* global rolling offset across all branch+sem buckets */
-  var branches=Object.keys(CURRICULUM);
-  for(var bi=0;bi<branches.length;bi++){
-    var branch=branches[bi];
-    var sems=Object.keys(CURRICULUM[branch]);
-    for(var si=0;si<sems.length;si++){
-      var sem=sems[si];
-      var n=((COUNTS[branch]||{})[sem])||40;
-      var subjs=CURRICULUM[branch][sem];
-      var yr=parseInt(sem)>=7?"21":parseInt(sem)>=5?"22":"23";
-      var code=branch.replace(/\s+/g,"").replace("AI-ML","AM").toUpperCase().slice(0,2);
-      var key=branch+"|"+sem;
-      STUDENT_DB[key]=[];
-      for(var i=0;i<n;i++){
-        /* Each student gets a completely unique name via rolling offset */
-        var nameIdx=(nameOffset+i) % FULL_NAMES.length;
-        var usn="1GD"+yr+code+("000"+(i+1)).slice(-3);
-        var subj=subjs[i % subjs.length];
-        STUDENT_DB[key].push({id:uid,usn:usn,name:FULL_NAMES[nameIdx],
-                               branch:branch,semester:sem,subject:subj});
-        uid++;
-      }
-      nameOffset+=n; /* advance so next bucket starts from fresh names */
-    }
-  }
-})();
+/* ── Curriculum (provided by server) ───────────────────────────── */
+var CURRICULUM = {{ curriculum_json | safe }};
 
 /* ── Rooms ──────────────────────────────────────────────────────── */
 var ROOMS=[{id:"R301",name:"Room 301",benches:40},{id:"R302",name:"Room 302",benches:35},
@@ -298,6 +238,45 @@ var ROOMS=[{id:"R301",name:"Room 301",benches:40},{id:"R302",name:"Room 302",ben
            {id:"R401",name:"Room 401",benches:30},{id:"R402",name:"Room 402",benches:30},
            {id:"R101",name:"Room 101",benches:40},{id:"R102",name:"Room 102",benches:35},
            {id:"R103",name:"Room 103",benches:30},{id:"R104",name:"Room 104",benches:25}];
+
+// Rooms configured by user in the UI. If empty, allocator will use `ROOMS` defaults.
+var ROOM_CONFIG = [];
+
+function addRoom(){
+  var name = document.getElementById('rmName').value.trim();
+  var benchesRaw = document.getElementById('rmBenches').value.trim();
+  var rowsRaw = document.getElementById('rmRows').value.trim();
+  var colsRaw = document.getElementById('rmCols').value.trim();
+  if(!name){ alert('Enter a room name'); return; }
+  var benches = parseInt(benchesRaw,10)||0;
+  var rows = parseInt(rowsRaw,10)||0;
+  var cols = parseInt(colsRaw,10)||0;
+  if(!benches){
+    if(rows && cols) benches = rows * cols;
+    else { alert('Enter benches or rows and cols'); return; }
+  }
+  ROOM_CONFIG.push({id:name,name:name,benches:benches,rows:rows||null,cols:cols||null});
+  document.getElementById('rmName').value=''; document.getElementById('rmBenches').value=''; document.getElementById('rmRows').value=''; document.getElementById('rmCols').value='';
+  renderRooms();
+}
+
+function renderRooms(){
+  var el = document.getElementById('roomList');
+  if(!ROOM_CONFIG.length){ el.innerHTML='No rooms configured — using defaults.'; return; }
+  var html='';
+  for(var i=0;i<ROOM_CONFIG.length;i++){
+    var r=ROOM_CONFIG[i];
+    html+='<div style="padding:6px 0;display:flex;gap:8px;align-items:center;">';
+    html+='<strong style="width:120px;">'+r.name+'</strong>';
+    html+='<span style="color:var(--text-secondary);">Benches: '+r.benches+'</span>';
+    if(r.rows && r.cols) html+='<span style="color:var(--text-secondary);margin-left:8px;">('+r.rows+'×'+r.cols+')</span>';
+    html+='<button class="btn btn-outline" style="margin-left:12px;" onclick="removeRoom('+i+')">Remove</button>';
+    html+='</div>';
+  }
+  el.innerHTML=html;
+}
+
+function removeRoom(idx){ ROOM_CONFIG.splice(idx,1); renderRooms(); }
 
 function brCls(b){
   var m={"CSE":"brCSE","CSE AI-ML":"brAIML","ISE":"brISE","AE":"brAE","ECE":"brECE"};
@@ -322,6 +301,16 @@ function onAddSemChange(){
   sel.innerHTML="<option value=''>— Subject —</option>";
   if(!branch||!sem) return;
   var list=(CURRICULUM[branch]||{})[sem]||[];
+  // If branch-specific list missing (e.g., curriculum keys use department names),
+  // fall back to aggregating all subjects available for the semester.
+  if(!list.length){
+    var seen={};
+    for(var kb in CURRICULUM){
+      var sarr=(CURRICULUM[kb]||{})[sem]||[];
+      for(var i=0;i<sarr.length;i++) seen[sarr[i]]=1;
+    }
+    list=Object.keys(seen).sort();
+  }
   for(var i=0;i<list.length;i++){
     var o=document.createElement("option");
     o.value=o.textContent=list[i];
@@ -334,29 +323,39 @@ function addGroup(){
   var branch=document.getElementById("addBranch").value;
   var sem=document.getElementById("addSem").value;
   var subject=document.getElementById("addSubject").value;
+  var prefix = document.getElementById("addUSNPrefix").value.trim();
+  var usnFrom = document.getElementById("addUSNFrom").value.trim();
+  var usnTo = document.getElementById("addUSNTo").value.trim();
   if(!branch){alert("Select a branch.");return;}
   if(!sem){alert("Select a semester.");return;}
   if(!subject){alert("Select a subject.");return;}
+  if(!prefix||!usnFrom||!usnTo){alert('Enter USN prefix, from and to values.');return;}
   /* prevent duplicate */
   for(var i=0;i<examGroups.length;i++){
     if(examGroups[i].branch===branch&&examGroups[i].sem===sem&&examGroups[i].subject===subject){
       alert("This branch+semester+subject group is already added."); return;
     }
   }
-  var key=branch+"|"+sem;
-  var pool=STUDENT_DB[key]||[];
-  /* filter students who have this subject */
-  var students=[];
-  for(var i=0;i<pool.length;i++){
-    if(pool[i].subject===subject) students.push(pool[i]);
+  var start = parseInt(usnFrom,10);
+  var end = parseInt(usnTo,10);
+  if(isNaN(start) || isNaN(end)) { alert('USN from/to must be numeric'); return; }
+  var pad = Math.max(usnFrom.length, usnTo.length, 3);
+  var step = start <= end ? 1 : -1;
+  var students = [];
+  for(var n=start; step>0 ? n<=end : n>=end; n+=step){
+    var num = String(n).padStart(pad,'0');
+    students.push({id: null, usn: (prefix||'')+num, name: '', branch: branch, sem: sem});
   }
-  if(!students.length){alert("No students found for "+branch+" Sem "+sem+" — "+subject);return;}
+  if(!students.length){ alert('No USNs generated'); return; }
   examGroups.push({branch:branch,sem:sem,subject:subject,students:students});
   renderGroupList();
   /* reset selectors */
   document.getElementById("addBranch").value="";
   document.getElementById("addSem").value="";
   document.getElementById("addSubject").innerHTML="<option value=''>— Subject —</option>";
+  document.getElementById("addUSNPrefix").value='';
+  document.getElementById("addUSNFrom").value='';
+  document.getElementById("addUSNTo").value='';
 }
 
 function removeGroup(idx){
@@ -435,8 +434,17 @@ function allocate(seed){
     }
   }
 
-  /* shuffle entire pool */
-  pool=lcgShuffle(pool,seed);
+  var allocMode = (document.getElementById('allocMode')||{}).value || 'diverse';
+  /* For sequential mode, sort pool by USN and do not shuffle; otherwise shuffle entire pool */
+  if(allocMode === 'sequential'){
+    pool.sort(function(a,b){
+      var au = (a.student.usn||'').toString().toUpperCase();
+      var bu = (b.student.usn||'').toString().toUpperCase();
+      if(au<bu) return -1; if(au>bu) return 1; return 0;
+    });
+  } else {
+    pool=lcgShuffle(pool,seed);
+  }
 
   /* group by branch */
   var byBranch={};
@@ -493,12 +501,13 @@ function allocate(seed){
     }
   }
 
-  /* assign to rooms */
+  /* assign to rooms - use ROOM_CONFIG if provided, otherwise default ROOMS */
+  var roomsToUse = (ROOM_CONFIG && ROOM_CONFIG.length) ? ROOM_CONFIG : ROOMS;
   var rIdx=0,bInRoom=0,roomBenches={};
   for(var i=0;i<benches.length;i++){
-    while(rIdx<ROOMS.length&&bInRoom>=ROOMS[rIdx].benches){rIdx++;bInRoom=0;}
-    if(rIdx>=ROOMS.length) rIdx=ROOMS.length-1;
-    var room=ROOMS[rIdx];
+    while(rIdx<roomsToUse.length && bInRoom>=roomsToUse[rIdx].benches){ rIdx++; bInRoom=0; }
+    if(rIdx>=roomsToUse.length) rIdx=roomsToUse.length-1;
+    var room=roomsToUse[rIdx];
     if(!roomBenches[room.id]) roomBenches[room.id]={room:room,list:[]};
     roomBenches[room.id].list.push({seats:benches[i],benchNo:bInRoom+1});
     bInRoom++;

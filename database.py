@@ -7,6 +7,7 @@
 import os
 import json
 from datetime import datetime
+from urllib.parse import urlparse
 
 # Load .env for local development
 try:
@@ -16,16 +17,42 @@ except ImportError:
     pass
 
 DATABASE_URL = os.environ.get('DATABASE_URL', '').strip()
-_USE_PG = bool(DATABASE_URL)  # True → PostgreSQL, False → SQLite
+
+
+def _is_postgres_url(url):
+    return url.lower().startswith(('postgres://', 'postgresql://'))
+
+
+def _sqlite_path_from_url(url):
+    parsed = urlparse(url)
+    path = parsed.path or ''
+    if path.startswith('/') and len(path) > 2 and path[2] == ':':
+        path = path[1:]
+    else:
+        path = path.lstrip('/')
+    if not path:
+        return os.path.join(os.path.dirname(__file__), 'paper_generator.db')
+    if not os.path.isabs(path):
+        path = os.path.join(os.path.dirname(__file__), path)
+    return os.path.abspath(path)
+
+
+_USE_PG = _is_postgres_url(DATABASE_URL)
 
 if _USE_PG:
-    import psycopg2
-    import psycopg2.extras
+    try:
+        import psycopg2
+        import psycopg2.extras
+    except ImportError as exc:
+        raise RuntimeError(
+            'DATABASE_URL points to PostgreSQL, but psycopg2 is not installed. '
+            'Install requirements or unset DATABASE_URL to use SQLite locally.'
+        ) from exc
     PH = '%s'   # PostgreSQL placeholder
 else:
     import sqlite3
     PH = '?'    # SQLite placeholder
-    _SQLITE_PATH = os.path.join(os.path.dirname(__file__), 'paper_generator.db')
+    _SQLITE_PATH = _sqlite_path_from_url(DATABASE_URL) if DATABASE_URL.lower().startswith('sqlite://') else os.path.join(os.path.dirname(__file__), 'paper_generator.db')
 
 # ---------------------------------------------------------------------------
 # Connection helpers
@@ -252,6 +279,63 @@ def init_db():
         )
     '''))
 
+    cur.execute(_fix('''
+        CREATE TABLE IF NOT EXISTS teacher_timetable_slots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            teacher_id TEXT NOT NULL,
+            day TEXT NOT NULL,
+            slot_code TEXT NOT NULL,
+            slot_label TEXT NOT NULL,
+            status TEXT DEFAULT 'leisure',
+            subject TEXT,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(teacher_id, day, slot_code),
+            FOREIGN KEY (teacher_id) REFERENCES users(id)
+        )
+    '''))
+
+    cur.execute(_fix('''
+        CREATE TABLE IF NOT EXISTS exam_duty_exams (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            department TEXT,
+            exam_date DATE NOT NULL,
+            day TEXT NOT NULL,
+            slot TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            branch TEXT,
+            semester TEXT,
+            room TEXT,
+            active INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    '''))
+
+    cur.execute(_fix('''
+        CREATE TABLE IF NOT EXISTS exam_duty_teacher_settings (
+            teacher_id TEXT PRIMARY KEY,
+            max_duties INTEGER DEFAULT 3,
+            active INTEGER DEFAULT 1,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (teacher_id) REFERENCES users(id)
+        )
+    '''))
+
+    cur.execute(_fix('''
+        CREATE TABLE IF NOT EXISTS exam_duty_assignments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            exam_id INTEGER NOT NULL UNIQUE,
+            teacher_id TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (exam_id) REFERENCES exam_duty_exams(id) ON DELETE CASCADE,
+            FOREIGN KEY (teacher_id) REFERENCES users(id)
+        )
+    '''))
+
     # Safe column additions (PostgreSQL supports IF NOT EXISTS natively;
     # SQLite 3.37+ does too — we catch errors silently for older SQLite)
     safe_alters = [
@@ -267,6 +351,20 @@ def init_db():
         "ALTER TABLE events ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'event'",
         "ALTER TABLE events ADD COLUMN IF NOT EXISTS semester TEXT",
         "ALTER TABLE timetable_entries ADD COLUMN IF NOT EXISTS section TEXT",
+        "ALTER TABLE teacher_timetable_slots ADD COLUMN IF NOT EXISTS slot_label TEXT",
+        "ALTER TABLE teacher_timetable_slots ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'leisure'",
+        "ALTER TABLE teacher_timetable_slots ADD COLUMN IF NOT EXISTS subject TEXT",
+        "ALTER TABLE teacher_timetable_slots ADD COLUMN IF NOT EXISTS notes TEXT",
+        "ALTER TABLE teacher_timetable_slots ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+        "ALTER TABLE exam_duty_exams ADD COLUMN IF NOT EXISTS department TEXT",
+        "ALTER TABLE exam_duty_exams ADD COLUMN IF NOT EXISTS active INTEGER DEFAULT 1",
+        "ALTER TABLE exam_duty_exams ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+        "ALTER TABLE exam_duty_teacher_settings ADD COLUMN IF NOT EXISTS max_duties INTEGER DEFAULT 3",
+        "ALTER TABLE exam_duty_teacher_settings ADD COLUMN IF NOT EXISTS active INTEGER DEFAULT 1",
+        "ALTER TABLE exam_duty_teacher_settings ADD COLUMN IF NOT EXISTS notes TEXT",
+        "ALTER TABLE exam_duty_teacher_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+        "ALTER TABLE exam_duty_assignments ADD COLUMN IF NOT EXISTS exam_id INTEGER",
+        "ALTER TABLE exam_duty_assignments ADD COLUMN IF NOT EXISTS teacher_id TEXT",
     ]
     for stmt in safe_alters:
         try:
@@ -893,6 +991,219 @@ def get_timetable_entries(department, semester, section=None):
     rows = [_row(r) for r in cur.fetchall()]
     conn.close()
     return rows
+
+
+def get_teacher_timetable_slots(teacher_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(_fix('''
+        SELECT * FROM teacher_timetable_slots
+        WHERE teacher_id=%s
+        ORDER BY
+            CASE day
+                WHEN 'Mon' THEN 1 WHEN 'Tue' THEN 2 WHEN 'Wed' THEN 3
+                WHEN 'Thu' THEN 4 WHEN 'Fri' THEN 5 WHEN 'Sat' THEN 6
+                WHEN 'Sun' THEN 7 ELSE 8 END,
+            slot_code
+    '''), (teacher_id,))
+    rows = [_row(r) for r in cur.fetchall()]
+    conn.close()
+    return rows
+
+
+def replace_teacher_timetable_slots(teacher_id, slots):
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        cur.execute(_fix('DELETE FROM teacher_timetable_slots WHERE teacher_id=%s'), (teacher_id,))
+        for slot in slots or []:
+            cur.execute(_fix('''
+                INSERT INTO teacher_timetable_slots
+                    (teacher_id, day, slot_code, slot_label, status, subject, notes, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            '''), (
+                teacher_id,
+                slot.get('day'),
+                slot.get('slot_code'),
+                slot.get('slot_label'),
+                slot.get('status') or 'leisure',
+                slot.get('subject'),
+                slot.get('notes'),
+                datetime.now().isoformat(),
+            ))
+        return True
+    finally:
+        conn.commit()
+        conn.close()
+
+
+def get_teacher_timetable_map(teacher_id):
+    timetable_map = {}
+    for row in get_teacher_timetable_slots(teacher_id):
+        day = str(row.get('day') or '').strip()
+        slot_code = str(row.get('slot_code') or '').strip()
+        if day and slot_code:
+            timetable_map.setdefault(day, {})[slot_code] = row
+    return timetable_map
+
+
+# ---------------------------------------------------------------------------
+# EXAM DUTY FUNCTIONS
+# ---------------------------------------------------------------------------
+
+def get_exam_duty_exams(department=None, active_only=False):
+    conn = get_db()
+    cur = conn.cursor()
+    query = 'SELECT * FROM exam_duty_exams WHERE 1=1'
+    params = []
+    if department:
+        query += _fix(' AND (department=%s OR department IS NULL)')
+        params.append(department)
+    if active_only:
+        query += ' AND active=1'
+    query += ' ORDER BY exam_date ASC, slot ASC, id ASC'
+    cur.execute(_fix(query), params)
+    rows = [_row(r) for r in cur.fetchall()]
+    conn.close()
+    return rows
+
+
+def save_exam_duty_exam(exam_id=None, department=None, exam_date=None, day=None, slot=None,
+                        subject=None, branch=None, semester=None, room=None, active=1):
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        if exam_id:
+            cur.execute(_fix('''
+                UPDATE exam_duty_exams
+                SET department=%s, exam_date=%s, day=%s, slot=%s, subject=%s,
+                    branch=%s, semester=%s, room=%s, active=%s, updated_at=%s
+                WHERE id=%s
+            '''), (
+                department, exam_date, day, slot, subject, branch, semester, room,
+                1 if active else 0, datetime.now().isoformat(), exam_id
+            ))
+            return int(exam_id)
+        new_id = _execute_returning(cur, '''
+            INSERT INTO exam_duty_exams
+                (department, exam_date, day, slot, subject, branch, semester, room, active)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
+        ''', (department, exam_date, day, slot, subject, branch, semester, room, 1 if active else 0))
+        return new_id
+    finally:
+        conn.commit()
+        conn.close()
+
+
+def delete_exam_duty_exam(exam_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(_fix('DELETE FROM exam_duty_exams WHERE id=%s'), (exam_id,))
+    conn.commit()
+    conn.close()
+
+
+def upsert_exam_duty_teacher_setting(teacher_id, max_duties=3, active=1, notes=None):
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        cur.execute(_fix('''
+            INSERT INTO exam_duty_teacher_settings
+                (teacher_id, max_duties, active, notes, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (teacher_id) DO UPDATE SET
+                max_duties=excluded.max_duties,
+                active=excluded.active,
+                notes=excluded.notes,
+                updated_at=excluded.updated_at
+        '''), (teacher_id, int(max_duties or 3), 1 if active else 0, notes, datetime.now().isoformat(), datetime.now().isoformat()))
+        return True
+    finally:
+        conn.commit()
+        conn.close()
+
+
+def get_exam_duty_teacher_settings(department=None):
+    conn = get_db()
+    cur = conn.cursor()
+    query = '''
+        SELECT u.id, u.name, u.email, u.department, u.phone, u.profile_complete,
+               COALESCE(s.max_duties, 3) AS max_duties,
+               COALESCE(s.active, 1) AS active,
+               COALESCE(s.notes, '') AS notes
+        FROM users u
+        LEFT JOIN exam_duty_teacher_settings s ON s.teacher_id = u.id
+        WHERE u.role IN ('teacher', 'faculty')
+    '''
+    params = []
+    if department:
+        query += _fix(' AND u.department=%s')
+        params.append(department)
+    query += ' ORDER BY u.name ASC'
+    cur.execute(_fix(query), params)
+    rows = [_row(r) for r in cur.fetchall()]
+    conn.close()
+    return rows
+
+
+def get_exam_duty_assignments(department=None, exam_id=None):
+    conn = get_db()
+    cur = conn.cursor()
+    query = '''
+        SELECT a.id, a.exam_id, a.teacher_id, a.created_at,
+               e.exam_date, e.day, e.slot, e.subject, e.branch, e.semester, e.room, e.department,
+               u.name as teacher_name, u.email as teacher_email,
+               COALESCE(s.max_duties, 3) AS max_duties
+        FROM exam_duty_assignments a
+        JOIN exam_duty_exams e ON e.id = a.exam_id
+        JOIN users u ON u.id = a.teacher_id
+        LEFT JOIN exam_duty_teacher_settings s ON s.teacher_id = a.teacher_id
+        WHERE 1=1
+    '''
+    params = []
+    if department:
+        query += _fix(' AND (e.department=%s OR e.department IS NULL)')
+        params.append(department)
+    if exam_id:
+        query += _fix(' AND a.exam_id=%s')
+        params.append(exam_id)
+    query += ' ORDER BY e.exam_date ASC, e.slot ASC, a.id ASC'
+    cur.execute(_fix(query), params)
+    rows = [_row(r) for r in cur.fetchall()]
+    conn.close()
+    return rows
+
+
+def save_exam_duty_assignment(exam_id, teacher_id):
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        cur.execute(_fix('''
+            INSERT INTO exam_duty_assignments (exam_id, teacher_id)
+            VALUES (%s, %s)
+            ON CONFLICT (exam_id) DO UPDATE SET
+                teacher_id=excluded.teacher_id
+        '''), (exam_id, teacher_id))
+        return True
+    finally:
+        conn.commit()
+        conn.close()
+
+
+def clear_exam_duty_assignments(department=None):
+    conn = get_db()
+    cur = conn.cursor()
+    if department:
+        cur.execute(_fix('''
+            DELETE FROM exam_duty_assignments
+            WHERE exam_id IN (
+                SELECT id FROM exam_duty_exams WHERE department=%s OR department IS NULL
+            )
+        '''), (department,))
+    else:
+        cur.execute('DELETE FROM exam_duty_assignments')
+    conn.commit()
+    conn.close()
 
 
 # ---------------------------------------------------------------------------

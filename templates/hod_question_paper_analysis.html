@@ -1,0 +1,335 @@
+{% extends "base.html" %}
+
+{% block title %}Question Paper Analysis - Paper Generator{% endblock %}
+
+{% set show_navbar = true %}
+
+{% block head %}
+<style>
+  .analysis-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.9fr);
+    gap: 24px;
+    align-items: stretch;
+  }
+
+  .analysis-badge-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 18px;
+  }
+
+  .analysis-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-card-border);
+    color: var(--brown);
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+
+  .analysis-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .analysis-metric {
+    padding: 18px;
+    border-radius: 18px;
+    background: var(--green-bg);
+    border: 1px solid rgba(157, 117, 91, 0.14);
+  }
+
+  .analysis-metric-value {
+    display: block;
+    font-family: var(--font-heading);
+    font-size: 2rem;
+    color: var(--green-primary);
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+
+  .analysis-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(300px, 0.75fr);
+    gap: 24px;
+    align-items: start;
+  }
+
+  .analysis-result {
+    border: 1px solid var(--glass-card-border);
+    border-radius: 20px;
+    background: var(--glass-card-bg);
+    padding: 18px;
+    box-shadow: var(--glass-card-shadow);
+  }
+
+  .analysis-result + .analysis-result {
+    margin-top: 14px;
+  }
+
+  .analysis-question {
+    font-size: 1.03rem;
+    color: var(--brown);
+    line-height: 1.6;
+    margin: 10px 0 14px;
+  }
+
+  .analysis-source-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .analysis-source-item {
+    padding: 10px 12px;
+    border-radius: 14px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    font-size: 0.92rem;
+    color: var(--text-secondary);
+  }
+
+  .analysis-form-card {
+    position: sticky;
+    top: 104px;
+  }
+
+  .analysis-file-list {
+    display: grid;
+    gap: 10px;
+    margin-top: 14px;
+  }
+
+  .analysis-file-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-card-border);
+    overflow: hidden;
+  }
+
+  .analysis-file-item > div:first-child {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .analysis-file-item > div:last-child {
+    flex: 0 0 auto;
+    text-align: right;
+  }
+
+  .analysis-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 18px;
+  }
+
+  @media (max-width: 980px) {
+    .analysis-hero,
+    .analysis-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .analysis-form-card {
+      position: static;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .analysis-file-item {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .analysis-file-item > div:last-child {
+      width: 100%;
+      text-align: left;
+    }
+
+    .analysis-file-item .badge {
+      display: inline-flex;
+      max-width: 100%;
+      white-space: normal;
+      line-height: 1.2;
+    }
+  }
+
+  .analysis-file-item strong,
+  .analysis-file-item .text-muted,
+  .analysis-question,
+  .analysis-source-item {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+  <div class="container">
+    <div class="dashboard-header fade-in">
+      <div class="section-label">Previous Year Question Paper Analysis</div>
+      <h1 class="h1">Repeated question detection studio</h1>
+      <p class="text-muted" style="font-size: 1.125rem; max-width: 920px;">Upload past papers, extract questions, and instantly see which questions recur across years, papers, and subjects.</p>
+      <div class="analysis-badge-row">
+        <span class="analysis-chip">Multiple PDF upload</span>
+        <span class="analysis-chip">Repeated question clustering</span>
+        <span class="analysis-chip">Paper-wise coverage</span>
+        <span class="analysis-chip">Fast summary view</span>
+      </div>
+    </div>
+
+    <div class="analysis-hero fade-in" style="animation-delay: 0.1s;">
+      <div class="card">
+        <div class="section-label">What this page does</div>
+        <h3 class="h4 mb-3" style="color: var(--green-primary);">Turn old papers into a reusable question trend map</h3>
+        <p class="text-muted">This page is designed for HOD review work. Upload one or more previous-year PDFs, and the app will extract likely questions, group matches, and show the strongest repeats first.</p>
+        <div class="analysis-metrics mt-4">
+          <div class="analysis-metric">
+            <span class="analysis-metric-value">{{ question_analysis.total_questions if question_analysis else 0 }}</span>
+            <div class="text-muted">Extracted questions</div>
+          </div>
+          <div class="analysis-metric">
+            <span class="analysis-metric-value">{{ question_analysis.repeated_groups if question_analysis else 0 }}</span>
+            <div class="text-muted">Repeated groups</div>
+          </div>
+          <div class="analysis-metric">
+            <span class="analysis-metric-value">{{ question_analysis.max_repeat_count if question_analysis else 0 }}</span>
+            <div class="text-muted">Max repeat count</div>
+          </div>
+          <div class="analysis-metric">
+            <span class="analysis-metric-value">{{ question_analysis.files|length if question_analysis else 0 }}</span>
+            <div class="text-muted">PDF files analyzed</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card analysis-form-card">
+        <div class="section-label">Upload papers</div>
+        <h3 class="h4 mb-3" style="color: var(--green-primary);">Analyze repeated questions</h3>
+        <form action="{{ url_for('hod_question_paper_analysis') }}" method="POST" enctype="multipart/form-data">
+          <div class="form-group">
+            <label class="form-label">Question Papers (PDF)</label>
+            <input type="file" class="form-input" name="question_papers" accept=".pdf" multiple required>
+          </div>
+          <div class="form-group" style="display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+            <div>
+              <label class="form-label">Show Top Results</label>
+              <input type="number" class="form-input" name="top_n" min="5" max="50" value="{{ question_analysis.top_n if question_analysis else 10 }}">
+            </div>
+            <div>
+              <label class="form-label">Minimum Repeat Count</label>
+              <input type="number" class="form-input" name="min_repeat_count" min="2" max="10" value="{{ question_analysis.min_repeat_count if question_analysis else 2 }}">
+            </div>
+          </div>
+          <button type="submit" class="btn btn-secondary btn-block">Analyze Papers</button>
+        </form>
+
+        {% if question_analysis %}
+        <div class="analysis-toolbar">
+          <form action="{{ url_for('clear_question_paper_analysis') }}" method="POST">
+            <button type="submit" class="btn btn-outline">Clear Current Results</button>
+          </form>
+          <a href="{{ url_for('export_question_paper_analysis') }}" class="btn btn-outline">Download Questions (CSV)</a>
+          <a href="{{ url_for('hod_dashboard') }}" class="btn btn-outline">Back to HOD Dashboard</a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if question_analysis %}
+    <div class="analysis-grid mt-4 fade-in" style="animation-delay: 0.18s;">
+      <div>
+        <div class="card">
+          <div class="section-label">Repeated Questions</div>
+          <h3 class="h4 mb-2" style="color: var(--green-primary);">Most repeated questions across the uploaded papers</h3>
+          <p class="text-muted">Results are ordered by repeat count and by how broadly they appear across files.</p>
+
+          {% if question_analysis.results %}
+          <div style="margin-top: 18px;">
+            {% for item in question_analysis.results %}
+            <div class="analysis-result">
+              <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; align-items:center;">
+                <div class="analysis-chip">#{{ loop.index }}</div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                  <span class="analysis-chip">Repeated {{ item.count }} times</span>
+                  <span class="analysis-chip">In {{ item.paper_span }} paper(s)</span>
+                </div>
+              </div>
+              <div class="analysis-question">{{ item.question }}</div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom: 10px;">
+                <span class="badge" style="background: var(--green-bg); color: var(--green-primary);">{{ item.coverage_percent }}% coverage</span>
+              </div>
+              <div class="text-muted" style="font-size: 0.92rem;">Appears in:</div>
+              <div class="analysis-source-list">
+                {% for source in item.source_labels %}
+                <div class="analysis-source-item">{{ source }}</div>
+                {% endfor %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="alert alert-warning mt-3">No repeated questions were found from the uploaded papers.</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <div class="section-label">File summary</div>
+          <h3 class="h4 mb-2" style="color: var(--green-primary);">Per-file extraction summary</h3>
+          <div class="analysis-file-list">
+            {% for file in question_analysis.files %}
+            <div class="analysis-file-item">
+              <div>
+                <strong style="display:block; color: var(--brown);">{{ file.paper_name }}</strong>
+                <span class="text-muted" style="font-size: 0.9rem;">{{ file.file_name }}</span>
+              </div>
+              <div style="text-align:right;">
+                <div class="badge" style="background: var(--green-bg); color: var(--green-primary);">{{ file.question_count }} questions</div>
+                <div class="text-muted" style="font-size: 0.88rem; margin-top: 6px;">{{ file.year }}</div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="card mt-4">
+          <div class="section-label">Analysis summary</div>
+          <h3 class="h4 mb-2" style="color: var(--green-primary);">Quick insights</h3>
+          <div style="display:grid; gap: 10px; margin-top: 14px;">
+            <div class="analysis-chip">Generated at {{ question_analysis.generated_at }}</div>
+            <div class="analysis-chip">Unique questions: {{ question_analysis.unique_questions }}</div>
+            <div class="analysis-chip">Groups shared by all papers: {{ question_analysis.questions_shared_by_all }}</div>
+            <div class="analysis-chip">Minimum repeat count: {{ question_analysis.min_repeat_count }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="card mt-4 fade-in" style="animation-delay: 0.18s;">
+      <div class="section-label">No analysis yet</div>
+      <h3 class="h4 mb-2" style="color: var(--green-primary);">Upload papers to start</h3>
+      <p class="text-muted">Once you upload PDFs, this page will show the repeated questions, file coverage, and the strongest exam trends.</p>
+    </div>
+    {% endif %}
+
+    <div class="mt-4">
+      <a href="{{ url_for('hod_dashboard') }}" class="btn btn-outline">← Back to HOD Dashboard</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

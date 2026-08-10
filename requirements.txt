@@ -2,3 +2,4 @@ Flask
 PyMuPDF
 gunicorn
 python-dotenv
+psycopg2-binary
