@@ -11,13 +11,15 @@ from pathlib import Path
 
 def get_upload_root():
     """Return the writable local storage root for the current environment."""
+    runtime_root = Path(__file__).resolve().parent
+    on_vercel = bool(os.environ.get('VERCEL')) or runtime_root == Path('/var/task')
     configured_root = os.environ.get('UPLOAD_ROOT')
     if configured_root:
         root = Path(configured_root)
-        if os.environ.get('VERCEL') and not root.is_absolute():
-            root = Path(tempfile.gettempdir()) / root
+        if on_vercel and (not root.is_absolute() or root == runtime_root or runtime_root in root.parents):
+            root = Path(tempfile.gettempdir()) / root.name
         return root.resolve()
-    if os.environ.get('VERCEL'):
+    if on_vercel:
         return Path(tempfile.gettempdir()) / 'paper-generator-uploads'
     return Path('uploads').resolve()
 

@@ -23,6 +23,13 @@ def _is_postgres_url(url):
     return url.lower().startswith(('postgres://', 'postgresql://'))
 
 
+if os.environ.get('VERCEL') and not _is_postgres_url(DATABASE_URL):
+    raise RuntimeError(
+        'A PostgreSQL DATABASE_URL is required on Vercel. Configure a connection string '
+        'starting with postgres:// or postgresql://; SQLite is not persistent or writable there.'
+    )
+
+
 def _sqlite_path_from_url(url):
     parsed = urlparse(url)
     path = parsed.path or ''

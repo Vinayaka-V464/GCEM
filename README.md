@@ -50,6 +50,13 @@ pip install -r requirements.txt
 ### 2) Configure environment variables
 Create a local `.env` file with the provided Firebase keys, secret key, and SQLite path. The app uses `paper_generator.db` locally.
 
+For Vercel, configure these project environment variables:
+```
+DATABASE_URL=postgresql://user:password@host:5432/database?sslmode=require
+SECRET_KEY=<long-random-production-secret>
+```
+`DATABASE_URL` is required in Vercel. The application will fail fast instead of falling back to a non-persistent SQLite database.
+
 ### 3) Configure Firebase Auth
 Firebase config is in:
 ```
