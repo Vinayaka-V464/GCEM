@@ -50,6 +50,13 @@
                                 style="padding: 6px 12px; font-size: 0.75rem; margin-left: 8px;" download>
                                 Download
                             </a>
+                            <form method="post" action="{{ url_for('delete_my_resource', resource_type='question-banks', resource_id=qb.id) }}"
+                                style="display: inline;" onsubmit="return confirm('Remove this question bank?');">
+                                <button type="submit" class="btn btn-danger"
+                                    style="padding: 6px 12px; font-size: 0.75rem; margin-left: 8px;">
+                                    Remove
+                                </button>
+                            </form>
                         </td>
                     </tr>
                     {% endfor %}
@@ -103,6 +110,13 @@
                                 style="padding: 6px 12px; font-size: 0.75rem; margin-left: 8px;" download>
                                 Download
                             </a>
+                            <form method="post" action="{{ url_for('delete_my_resource', resource_type='notes', resource_id=note.id) }}"
+                                style="display: inline;" onsubmit="return confirm('Remove these notes?');">
+                                <button type="submit" class="btn btn-danger"
+                                    style="padding: 6px 12px; font-size: 0.75rem; margin-left: 8px;">
+                                    Remove
+                                </button>
+                            </form>
                         </td>
                     </tr>
                     {% endfor %}

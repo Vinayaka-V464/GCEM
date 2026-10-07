@@ -860,6 +860,20 @@ def get_notes_by_teacher(teacher_id):
     return rows
 
 
+def delete_note(note_id, teacher_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(_fix('SELECT * FROM notes WHERE id=%s AND teacher_id=%s'), (note_id, teacher_id))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return None
+    cur.execute(_fix('DELETE FROM notes WHERE id=%s AND teacher_id=%s'), (note_id, teacher_id))
+    conn.commit()
+    conn.close()
+    return _row(row)
+
+
 # ---------------------------------------------------------------------------
 # QUESTION BANK FUNCTIONS
 # ---------------------------------------------------------------------------
@@ -895,6 +909,20 @@ def get_question_banks_by_teacher(teacher_id):
     rows = [_row(r) for r in cur.fetchall()]
     conn.close()
     return rows
+
+
+def delete_question_bank(question_bank_id, teacher_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(_fix('SELECT * FROM question_bank WHERE id=%s AND teacher_id=%s'), (question_bank_id, teacher_id))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return None
+    cur.execute(_fix('DELETE FROM question_bank WHERE id=%s AND teacher_id=%s'), (question_bank_id, teacher_id))
+    conn.commit()
+    conn.close()
+    return _row(row)
 
 
 def get_question_banks_by_ids(qb_ids):

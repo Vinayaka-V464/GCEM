@@ -36,7 +36,7 @@ from database import (
     add_subject_catalog, remove_subject_catalog, get_subject_catalog,
     create_paper, get_paper, get_papers_by_teacher, get_pending_papers,
     submit_paper, approve_paper, reject_paper, get_all_papers_for_hod, get_all_teachers,
-    create_note, get_all_notes, get_notes_by_teacher, create_question_bank, get_all_question_banks, get_question_banks_by_teacher, get_question_banks_by_ids,
+    create_note, get_all_notes, get_notes_by_teacher, delete_note, create_question_bank, get_all_question_banks, get_question_banks_by_teacher, delete_question_bank, get_question_banks_by_ids,
     get_timetables, create_timetable, add_timetable_entry, clear_timetable_entries, get_timetable_entries, update_timetable_details,
     get_upcoming_events, create_event, clear_calendar_events, get_all_events,
     get_exam_duty_exams, save_exam_duty_exam, delete_exam_duty_exam,
@@ -4431,6 +4431,31 @@ def my_resources():
                          question_banks=question_banks,
                          current_user=user,
                          show_navbar=True)
+
+
+@app.route('/my-resources/<resource_type>/<int:resource_id>/delete', methods=['POST'])
+@login_required
+@academic_staff_required
+def delete_my_resource(resource_type, resource_id):
+    user = (session.get('user') or {})
+    teacher_id = user.get('id')
+    delete_handler = {
+        'notes': delete_note,
+        'question-banks': delete_question_bank,
+    }.get(resource_type)
+    if not delete_handler:
+        abort(404)
+
+    resource = delete_handler(resource_id, teacher_id)
+    if not resource:
+        flash('Resource not found or you are not allowed to remove it.', 'error')
+        return redirect(url_for('my_resources'))
+
+    cloud_storage.delete_file(resource.get('file_path'))
+    label = 'Notes' if resource_type == 'notes' else 'Question bank'
+    flash(f'{label} removed successfully.', 'success')
+    return redirect(url_for('my_resources'))
+
 
 @app.route('/my-papers')
 @login_required
