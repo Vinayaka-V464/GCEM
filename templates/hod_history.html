@@ -100,7 +100,7 @@
                             {% endif %}
                         </td>
                         <td style="padding: 14px; color: var(--brown-light); font-size: 0.875rem;">
-                            {{ paper.created_at[:10] if paper.created_at else '-' }}
+                            {{ paper.created_at|date_only }}
                         </td>
                         <td style="padding: 14px; text-align: right;">
                             <a href="/paper/{{ paper.id }}" class="btn btn-outline"

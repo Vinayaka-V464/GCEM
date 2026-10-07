@@ -40,7 +40,7 @@
                     <tr style="border-bottom: 1px solid rgba(0,0,0,0.05);">
                         <td style="padding: 14px; font-weight: 500;">{{ qb.title }}</td>
                         <td style="padding: 14px;">{{ qb.subject }}</td>
-                        <td style="padding: 14px; color: #64748B;">{{ qb.created_at[:10] }}</td>
+                        <td style="padding: 14px; color: #64748B;">{{ qb.created_at|date_only }}</td>
                         <td style="padding: 14px; text-align: right;">
                             <a href="{{ get_file_url(qb.file_path) }}" class="btn btn-outline"
                                 style="padding: 6px 12px; font-size: 0.75rem;" target="_blank">
@@ -93,7 +93,7 @@
                     <tr style="border-bottom: 1px solid rgba(0,0,0,0.05);">
                         <td style="padding: 14px; font-weight: 500;">{{ note.title }}</td>
                         <td style="padding: 14px;">{{ note.subject }}</td>
-                        <td style="padding: 14px; color: #64748B;">{{ note.created_at[:10] }}</td>
+                        <td style="padding: 14px; color: #64748B;">{{ note.created_at|date_only }}</td>
                         <td style="padding: 14px; text-align: right;">
                             <a href="{{ get_file_url(note.file_path) }}" class="btn btn-outline"
                                 style="padding: 6px 12px; font-size: 0.75rem;" target="_blank">

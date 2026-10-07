@@ -14,7 +14,7 @@ import tempfile
 import fitz  # PyMuPDF
 import sqlite3
 from collections import Counter
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 # Load .env file (only needed in local dev; in production set env vars directly)
 try:
@@ -54,6 +54,16 @@ app.config['UPLOAD_FOLDER'] = str(cloud_storage.get_upload_root())
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 for folder_name in ['signatures', 'notes', 'question_banks', 'timetables']:
     os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], folder_name), exist_ok=True)
+
+
+@app.template_filter('date_only')
+def date_only(value):
+    """Render database date values consistently across SQLite and PostgreSQL."""
+    if not value:
+        return '-'
+    if isinstance(value, (date, datetime)):
+        return value.strftime('%Y-%m-%d')
+    return str(value)[:10]
 
 ALLOWED_EXTENSIONS = {'pdf', 'png', 'jpg', 'jpeg', 'gif'}
 QUESTION_PAPER_ANALYSIS_URL = '/hod/question-paper-analysis'

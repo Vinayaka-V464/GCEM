@@ -197,7 +197,7 @@
                                     style="font-weight: 600; font-size: 1rem; cursor: pointer; display: block;">{{
                                     qb.title }}</label>
                                 <div class="module-selection-meta">
-                                    Subject: {{ qb.subject }} | Date: {{ qb.created_at[:10] }}
+                                    Subject: {{ qb.subject }} | Date: {{ qb.created_at|date_only }}
                                 </div>
                             </div>
                             <a href="{{ get_file_url(qb.file_path) }}" target="_blank" class="btn btn-sm btn-outline"
