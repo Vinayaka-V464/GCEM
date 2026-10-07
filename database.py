@@ -90,7 +90,7 @@ def _fix(sql):
       ON CONFLICT … DO NOTHING / DO UPDATE  →  kept as-is (SQLite supports these)
     """
     if _USE_PG:
-        return sql
+        return sql.replace('INTEGER PRIMARY KEY AUTOINCREMENT', 'SERIAL PRIMARY KEY')
     sql = sql.replace('%s', '?')
     sql = sql.replace('SERIAL PRIMARY KEY', 'INTEGER PRIMARY KEY AUTOINCREMENT')
     sql = sql.replace(' TIMESTAMP ', ' TEXT ')
