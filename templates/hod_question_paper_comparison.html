@@ -1,0 +1,354 @@
+{% extends "base.html" %}
+
+{% block title %}Question Paper Comparison - Paper Generator{% endblock %}
+
+{% set show_navbar = true %}
+
+{% block head %}
+<style>
+  .comparison-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(320px, 0.9fr);
+    gap: 24px;
+    align-items: stretch;
+  }
+
+  .comparison-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+    margin-top: 20px;
+  }
+
+  .comparison-metric {
+    padding: 18px;
+    border-radius: 18px;
+    background: var(--green-bg);
+    border: 1px solid rgba(157, 117, 91, 0.14);
+  }
+
+  .comparison-metric-value {
+    display: block;
+    font-size: 2rem;
+    font-family: var(--font-heading);
+    color: var(--green-primary);
+    margin-bottom: 6px;
+    line-height: 1;
+  }
+
+  .comparison-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-card-border);
+    color: var(--brown);
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+
+  .topic-list {
+    display: grid;
+    gap: 10px;
+    margin-top: 14px;
+  }
+
+  .topic-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-card-border);
+  }
+
+  .topic-item strong {
+    color: var(--brown);
+  }
+
+  .comparison-sidebar {
+    position: sticky;
+    top: 104px;
+  }
+
+  @media (max-width: 980px) {
+    .comparison-hero,
+    .comparison-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .comparison-sidebar {
+      position: static;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+  <div class="container">
+    <div class="dashboard-header fade-in">
+      <div class="section-label">Internal vs External Paper Comparison</div>
+      <h1 class="h1">Similarity and overlap analysis</h1>
+      <p class="text-muted" style="font-size:1.125rem; max-width:920px;">Upload internal and external question papers to compare their overlap, identify similar topics, and review how closely the internal exams mirror external patterns.</p>
+      <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:18px;">
+        <span class="comparison-chip">Internal paper upload</span>
+        <span class="comparison-chip">External paper upload</span>
+        <span class="comparison-chip">Similarity scoring</span>
+        <span class="comparison-chip">Topic overlap snapshot</span>
+      </div>
+    </div>
+
+    <div class="comparison-hero fade-in" style="animation-delay: 0.1s; margin-top: 22px;">
+      <div class="card">
+        <div class="section-label">Overview</div>
+        <h3 class="h4 mb-3" style="color: var(--green-primary);">Detailed comparison dashboard</h3>
+        <p class="text-muted">This page is built for HOD review. It compares internal and external papers using extracted question text, measures exact overlaps, and highlights recurring topic themes.</p>
+
+        {% if comparison %}
+        <div class="comparison-grid">
+          <div class="comparison-metric">
+            <span class="comparison-metric-value">{{ comparison.similarity_score|round(1) }}%</span>
+            <div class="text-muted">Similarity score</div>
+          </div>
+          <div class="comparison-metric">
+            <span class="comparison-metric-value">{{ comparison.common_questions }}</span>
+            <div class="text-muted">Common questions</div>
+          </div>
+          <div class="comparison-metric">
+            <span class="comparison-metric-value">{{ comparison.internal_total_questions }}</span>
+            <div class="text-muted">Internal questions</div>
+          </div>
+          <div class="comparison-metric">
+            <span class="comparison-metric-value">{{ comparison.external_total_questions }}</span>
+            <div class="text-muted">External questions</div>
+          </div>
+        </div>
+        {% else %}
+        <div class="alert alert-info mt-4">
+          Upload both sets of papers to view comparison insights and a similarity summary.
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="card comparison-sidebar">
+        <div class="section-label">Upload comparison sets</div>
+        <h3 class="h4 mb-3" style="color: var(--green-primary);">Internal vs external papers</h3>
+
+        <form action="{{ url_for('hod_question_paper_comparison') }}" method="POST" enctype="multipart/form-data" id="comparison-form">
+          <div class="form-group">
+            <label class="form-label">Internal papers (PDF)</label>
+            <input type="file" class="form-input" id="internal-papers" name="internal_papers" accept=".pdf" multiple required>
+            <div class="text-muted file-count" id="internal-count" style="font-size: 0.875rem; margin-top: 4px; display: none;">No files selected</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">External papers (PDF)</label>
+            <input type="file" class="form-input" id="external-papers" name="external_papers" accept=".pdf" multiple required>
+            <div class="text-muted file-count" id="external-count" style="font-size: 0.875rem; margin-top: 4px; display: none;">No files selected</div>
+          </div>
+          <button type="submit" class="btn btn-secondary btn-block" id="compare-btn">Compare Papers</button>
+        </form>
+
+        {% if comparison %}
+        <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:18px;">
+          <form action="{{ url_for('clear_question_paper_comparison') }}" method="POST">
+            <button type="submit" class="btn btn-outline">Clear Results</button>
+          </form>
+          <a href="{{ url_for('export_question_paper_comparison') }}" class="btn btn-outline">Download CSV</a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if comparison %}
+    <div class="card mt-4 fade-in" style="animation-delay: 0.18s;">
+      <div class="section-label">Comparison summary</div>
+      <h3 class="h4 mb-2" style="color: var(--green-primary);">Similarity insights</h3>
+      <div style="display:grid; gap: 12px; margin-top: 12px;">
+        <span class="comparison-chip">Generated at {{ comparison.generated_at }}</span>
+        <span class="comparison-chip">Internal unique questions: {{ comparison.internal_unique_questions }}</span>
+        <span class="comparison-chip">External unique questions: {{ comparison.external_unique_questions }}</span>
+        <span class="comparison-chip">Shared overlap set: {{ comparison.common_questions }}</span>
+      </div>
+    </div>
+
+    <div class="comparison-grid mt-4 fade-in" style="animation-delay: 0.2s;">
+      <div class="card">
+        <div class="section-label">Similar topics</div>
+        <h3 class="h4 mb-2" style="color: var(--green-primary);">Topic overlap</h3>
+        {% if comparison.similar_topics %}
+        <div class="topic-list">
+          {% for topic in comparison.similar_topics %}
+          <div class="topic-item">
+            <div>
+              <strong>{{ topic.topic }}</strong>
+              <div class="text-muted" style="font-size:0.88rem;">Internal {{ topic.internal_count }} • External {{ topic.external_count }}</div>
+            </div>
+            <span class="badge" style="background: var(--green-bg); color: var(--green-primary);">{{ topic.match_score }}%</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="alert alert-warning mt-3">No major shared topic keywords were detected in the uploaded paper sets.</div>
+        {% endif %}
+      </div>
+
+      <div class="card">
+        <div class="section-label">File summary</div>
+        <h3 class="h4 mb-2" style="color: var(--green-primary);">Internal paper coverage</h3>
+        <div class="file-list">
+          {% for file in comparison.internal_files %}
+          <details class="file-item">
+            <summary>
+              <div>
+                <strong>{{ file.paper_name }}</strong>
+                <div class="text-muted" style="font-size:0.88rem;">{{ file.file_name }}</div>
+              </div>
+              <span class="badge" style="background: var(--green-bg); color: var(--green-primary);">{{ file.question_count }} QUESTIONS</span>
+            </summary>
+            <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--glass-border);">
+              {% if file.questions %}
+              <ol style="margin: 0; padding-left: 18px; line-height: 1.7; color: var(--brown);">
+                {% for question in file.questions %}
+                <li>{{ question }}</li>
+                {% endfor %}
+              </ol>
+              {% else %}
+              <div class="text-muted">No extracted questions were found for this paper.</div>
+              {% endif %}
+            </div>
+          </details>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="comparison-grid mt-4 fade-in" style="animation-delay: 0.22s;">
+      <div class="card">
+        <div class="section-label">Shared questions</div>
+        <h3 class="h4 mb-2" style="color: var(--green-primary);">Questions that appear in both sets</h3>
+        {% if comparison.shared_question_labels %}
+        <ul style="margin: 14px 0 0 18px; line-height: 1.8; color: var(--brown);">
+          {% for question in comparison.shared_question_labels %}
+          <li>{{ question }}</li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="alert alert-warning mt-3">No exact question matches were found between the internal and external papers.</div>
+        {% endif %}
+      </div>
+
+      <div class="card">
+        <div class="section-label">External file summary</div>
+        <h3 class="h4 mb-2" style="color: var(--green-primary);">External paper coverage</h3>
+        <div class="file-list">
+          {% for file in comparison.external_files %}
+          <details class="file-item">
+            <summary>
+              <div>
+                <strong>{{ file.paper_name }}</strong>
+                <div class="text-muted" style="font-size:0.88rem;">{{ file.file_name }}</div>
+              </div>
+              <span class="badge" style="background: var(--green-bg); color: var(--green-primary);">{{ file.question_count }} QUESTIONS</span>
+            </summary>
+            <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--glass-border);">
+              {% if file.questions %}
+              <ol style="margin: 0; padding-left: 18px; line-height: 1.7; color: var(--brown);">
+                {% for question in file.questions %}
+                <li>{{ question }}</li>
+                {% endfor %}
+              </ol>
+              {% else %}
+              <div class="text-muted">No extracted questions were found for this paper.</div>
+              {% endif %}
+            </div>
+          </details>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="mt-4">
+      <a href="{{ url_for('hod_dashboard') }}" class="btn btn-outline">← Back to HOD Dashboard</a>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    // File count display
+    const internalInput = document.getElementById('internal-papers');
+    const externalInput = document.getElementById('external-papers');
+    const internalCount = document.getElementById('internal-count');
+    const externalCount = document.getElementById('external-count');
+    const compareBtn = document.getElementById('compare-btn');
+    const comparisonForm = document.getElementById('comparison-form');
+
+    function updateFileCount(input, countDisplay) {
+      if (!input || !countDisplay) return;
+      const count = input.files.length;
+      if (count > 0) {
+        countDisplay.textContent = `${count} file${count > 1 ? 's' : ''} selected`;
+        countDisplay.style.display = 'block';
+        countDisplay.style.color = 'var(--green-primary)';
+      } else {
+        countDisplay.textContent = 'No files selected';
+        countDisplay.style.display = 'none';
+      }
+    }
+
+    if (internalInput) {
+      internalInput.addEventListener('change', function() {
+        updateFileCount(this, internalCount);
+      });
+    }
+
+    if (externalInput) {
+      externalInput.addEventListener('change', function() {
+        updateFileCount(this, externalCount);
+      });
+    }
+
+    // Form validation and submission
+    if (comparisonForm) {
+      comparisonForm.addEventListener('submit', function(e) {
+        const internalFiles = internalInput.files.length;
+        const externalFiles = externalInput.files.length;
+
+        if (internalFiles === 0) {
+          e.preventDefault();
+          alert('Please select at least one internal paper PDF.');
+          internalInput.focus();
+          return false;
+        }
+
+        if (externalFiles === 0) {
+          e.preventDefault();
+          alert('Please select at least one external paper PDF.');
+          externalInput.focus();
+          return false;
+        }
+
+        if (compareBtn) {
+          compareBtn.disabled = true;
+          compareBtn.textContent = `Comparing ${internalFiles + externalFiles} file${internalFiles + externalFiles > 1 ? 's' : ''}...`;
+          compareBtn.style.opacity = '0.6';
+        }
+      });
+    }
+
+    // If results exist on page load, scroll to them
+    const comparisonSummary = document.querySelector('.card[style*="animation-delay: 0.18s"]');
+    if (comparisonSummary) {
+      setTimeout(function() {
+        comparisonSummary.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 300);
+    }
+  });
+</script>
+{% endblock %}

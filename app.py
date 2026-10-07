@@ -25,6 +25,7 @@ except ImportError:
 from functools import wraps
 from flask import Flask, render_template, request, abort, jsonify, redirect, url_for, session, flash, send_from_directory, send_file
 from werkzeug.utils import secure_filename
+import storage as cloud_storage
 from database import (
     init_db, create_user, get_user, get_user_by_email, update_user_signature,
     update_principal_signature, update_teacher_profile, set_teacher_approval,
@@ -49,16 +50,14 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'paper-generator-secret-key-change-in-production')
 
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max
-app.config['UPLOAD_FOLDER'] = os.path.abspath(os.environ.get('UPLOAD_ROOT', 'uploads'))
+app.config['UPLOAD_FOLDER'] = str(cloud_storage.get_upload_root())
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 for folder_name in ['signatures', 'notes', 'question_banks', 'timetables']:
     os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], folder_name), exist_ok=True)
 
-# Local file storage
-import storage as cloud_storage
-
 ALLOWED_EXTENSIONS = {'pdf', 'png', 'jpg', 'jpeg', 'gif'}
 QUESTION_PAPER_ANALYSIS_URL = '/hod/question-paper-analysis'
+QUESTION_PAPER_COMPARISON_URL = '/hod/question-paper-comparison'
 TEACHER_TIMETABLE_SLOT_DEFS = [
     ('P1', '8:30–9:30'),
     ('P2', '9:30–10:30'),
@@ -283,7 +282,9 @@ def semester_core(value):
     text = str(value or '').strip().upper()
     if not text:
         return ''
-    match = re.search(r'([0-9IVX]+)', text)
+    match = re.search(r'SEM(?:ESTER)?\s*[-:]?\s*([0-9IVX]+)', text)
+    if not match:
+        match = re.search(r'\b([0-9]{1,2}|[IVX]{1,4})\b', text)
     if not match:
         return ''
     token = match.group(1)
@@ -373,13 +374,26 @@ def clean_question_text(text):
     text = str(text).strip()
     text = re.sub(r'\s+', ' ', text)
 
-    # Remove exam metadata like "M : Marks, L : Bloom's level, C : Course outcomes"
-    text = re.sub(r'\bM\s*:\s*Marks\b[^.]*?\bC\s*:\s*Course\s*outcomes\b', '', text, flags=re.I)
-    text = re.sub(r'\bM\s*:\s*Marks\b', '', text, flags=re.I)
-    text = re.sub(r'\bL\s*:\s*Bloom\s*["\']?s\s*level\b', '', text, flags=re.I)
-    text = re.sub(r'\bC\s*:\s*Course\s*outcomes\b', '', text, flags=re.I)
+    metadata_patterns = [
+        r'\b(?:VISVESVARAYA|VISVESWARAIAH|UNIVERSITY|GOVERNMENT|COLLEGE|DEPARTMENT|SEMESTER|END\s+EXAMINATION|SUPPLEMENTARY|DEC\s*JAN|JUN\s*JUL|PRINCIPAL|SIGNATURE|HOD|COE|CONTROLLER)\b.*',
+        r'\b(?:Principal|HOD|Controller of Examinations|Signature|Sign)\b.*',
+        r'\bM\s*:\s*Marks\b[^.]*?\bC\s*:\s*Course\s*outcomes\b',
+        r'\bM\s*:\s*Marks\b',
+        r'\bL\s*:\s*Bloom\s*["\']?s\s*level\b',
+        r'\bC\s*:\s*Course\s*outcomes\b',
+        r'\b(?:Answer\s+all\s+questions|Answer\s+any\s+five\s+questions|Attempt\s+any\s+five\s+questions)\b.*',
+        r'\b(?:Year\s*/?\s*Sem(?:ester)?\s*/?\s*Sec(?:tion)?|Sem(?:ester)?\s*[:/-]?\s*\d+\s*(?:/\s*\d+)?|Sec(?:tion)?\s*[:/-]?\s*[A-Z0-9]+|Duration\s*[:/-]?\s*\d+\.\d*\s*(?:hr|hrs|hours?)|Course\s*Code\s*[:/-]?.*|Name\s+[A-Z].*|Max\.\s*Marks\s*\d+|Q\.\s*No\.?\s*Questions\s+Marks\s+COs?\*?\s*RBT\*\*?\s*Level|Model\s+Question\s+Paper\s*(?:USN\s+Sixth|.*)|USN\s+Sixth)\b.*',
+        r'\b(?:Questions|Marks|COs?\*?|RBT\*\*?\s*Level)\b.*',
+        r'(?i)(?:am\s+to\s+\d{1,2}:\d{2}\s*(?:am|pm)\s+course\.?\s*)?(?:unwanted\s*)?\d*\.?\s*(?:analyze|evaluate|create)\s+(?:analyze|evaluate|create)\s+rbt\s+levels\s*(?:l[1-5]\s+){4}l[1-5]\.?',
+        r'(?i)\b(?:analyze|evaluate|create)\s+rbt\s+levels\s*(?:l[1-5]\s+){4}l[1-5]\.?',
+        r'^(?:\d+\s*[.)]?\s*)?(?:Model\s+Question\s+Paper|USN\b|Question\s+Paper\b).*',
+        r'^(?:\d+\s*[.)]?\s*)?(?:Model\s+Question\s+Paper|USN|Question\s+Paper).*',
+    ]
+    for pattern in metadata_patterns:
+        text = re.sub(pattern, '', text, flags=re.I)
 
     # Remove module and question number prefixes such as "M L C Module – 1 Q.1 a." or "10 L2 CO1 b."
+    # Also handle "1a." or "1. a" patterns from exam papers
     prefix_tokens = [
         r'^M\s+L\s+C\s*',
         r'^M\s*:\s*Marks\s*',
@@ -387,6 +401,8 @@ def clean_question_text(text):
         r'^C\s*:\s*Course\s*outcomes\s*',
         r'^Module\b[^A-Za-z0-9]*[–-]?\s*\d+\s*',
         r'^Q(?:uestion)?\.?\s*\d+(?:\.\d+)?(?:\s*[a-z])?\s*',
+        r'^\d+\s*[a-z]\s*[\.\)]\s*',
+        r'^\d+\s*[\.\)]\s*(?:[a-z]\s*[\.\)]\s*)?',
         r'^[a-z]\s*[.)]\s*',
         r'^[0-9]+\s*',
         r'^[ivx]+\s*',
@@ -408,26 +424,51 @@ def clean_question_text(text):
             break
 
     question_word_match = re.search(
-        r'\b(?:what|why|how|describe|explain|write|state|differentiate|compare|define|list|discuss|identify|analyze|analyse|derive|sketch|draw|illustrate|name|give|show|find|solve|prove|calculate|prepare|elaborate)\b',
+        r'\b(?:what|why|how|describe|explain|write|state|differentiate|compare|define|list|discuss|identify|analyze|analyse|derive|sketch|draw|illustrate|name|give|show|find|solve|prove|calculate|prepare|elaborate|distinguish|outline|explicate|discuss|examine|illustrate)\b',
         text,
         flags=re.I,
     )
     if question_word_match:
         text = text[question_word_match.start():]
 
-    # Ignore generic instructions, headers, and one-off fragments that are not questions.
+    # Ignore generic instructions, headers, signatures, and one-off fragments that are not questions.
     if len(text) < 12:
         return ""
     if re.match(r'^(?:Answer|Note|Time|Max|Marks|Module|Question|Semester|Department|Department of|Internet of Things|Seventh Semester|B\.E\./B\.Tech\.)', text, re.I):
         return ""
+    if re.search(r'^(?:VISVESVARAYA|SEMESTER\s+END\s+EXAMINATION|PRINCIPAL\s+SIGNATURE|CONTROLLER\s+OF\s+EXAMINATIONS|EXAM\s+NAME)', text, re.I):
+        return ""
     if not question_word_match and not re.search(r'[?]$', text) and len(re.findall(r'\b\w+\b', text)) < 5:
         return ""
+    
+    # Reject lines that are ONLY Bloom's taxonomy rubric headers (very strict)
+    if re.match(r'^(?:\d+\.?\s+)?(?:(?:remember|understand|apply|analyze|evaluate|create)\s+)+(?:rbt\s+)?(?:levels?\s+)?(?:l[1-5]\s+)*l?[1-5]?\.?\s*$', text, re.I):
+        word_count = len(re.findall(r'\b\w+\b', text))
+        bloom_verb_count = len(re.findall(r'\b(?:remember|understand|apply|analyze|evaluate|create)\b', text, re.I))
+        level_count = len(re.findall(r'\bl[1-5]\b', text, re.I))
+        if bloom_verb_count + level_count >= (word_count * 0.6):
+            return ""
+    
+    # Reject time-of-day prefixes and course prefixes that precede metadata
+    if re.match(r'^(?:am|pm)\s+to\s+\d{1,2}:\d{2}\s*(?:am|pm)\s+(?:course|subject)?', text, re.I):
+        return ""
+    
+    # Reject lines that are only isolated instruction phrases without substantive content
+    if re.match(r'^(?:unwanted|course|subject|title|heading|label|tag)\s*\.?\s*$', text, re.I):
+        return ""
 
-    # Remove any remaining numbering or bullet prefixes at the start or trailing exam labels at the end
+    # Remove any remaining numbering or bullet prefixes at the start
     text = re.sub(r'^(?:\s*(?:Q(?:uestion)?\s*\d*|[0-9]+|[ivx]+|[a-z]\s*[.)])\s*)+', '', text, flags=re.I)
-    split_match = re.search(r'(?<!\w)(?:\b(?:\d+\s+L\d+|\d+\s+CO\d+|\d+\s+of\s+\d+|\b(?:BCS|MCA|CSE|ECE|EEE|ME|CE|ISE|AI|DS|CS)\d{3,4}\b|Module\b[^A-Za-z0-9]*[–-]?\s*\d+|Q(?:uestion)?\.?\s*\d+(?:\.\d+)?(?:\s*[a-z])?))', text, flags=re.I)
+    
+    # Remove trailing marks/CO/RBT info (e.g., "10 CO1 L2" or "10" at end)
+    text = re.sub(r'\s+(?:\d+\s+)?(?:CO\d+\s+)?(?:L[1-6]|RBT\s*\d*|OR|AND)\s*$', '', text, flags=re.I)
+    text = re.sub(r'\s+\d+\s*$', '', text)  # Remove trailing marks (just a number)
+    
+    # Remove split points (e.g., module numbers mid-text)
+    split_match = re.search(r'(?<!\w)(?:\b(?:\d+\s+L[1-6]|\d+\s+CO\d+|\d+\s+of\s+\d+|\b(?:BCS|MCA|CSE|ECE|EEE|ME|CE|ISE|AI|DS|CS)\d{3,4}\b|Module\b[^A-Za-z0-9]*[–-]?\s*\d+|Q(?:uestion)?\.?\s*\d+(?:\.\d+)?(?:\s*[a-z])?))', text, flags=re.I)
     if split_match:
         text = text[:split_match.start()].rstrip(' .:-')
+    
     text = re.sub(r'^[^A-Za-z0-9]+', '', text)
 
     trailing_punct = ''
@@ -483,54 +524,151 @@ def infer_paper_context(filename, pdf_text):
     }
 
 
+def _extract_pdf_text_for_questions(pdf_source):
+    """Return the best available text for a PDF, including OCR fallback for scanned papers."""
+    doc, _ = _open_pdf_from_source(pdf_source)
+    try:
+        text_parts = []
+        for page in doc:
+            page_text = page.get_text("text")
+            if page_text and page_text.strip():
+                text_parts.append(page_text)
+                continue
+
+            block_text = "\n".join(
+                " ".join(part[4:]) if isinstance(part, tuple) and len(part) >= 5 else str(part)
+                for part in page.get_text("blocks")
+            )
+            if block_text and block_text.strip():
+                text_parts.append(block_text)
+                continue
+
+            try:
+                import pytesseract
+                from PIL import Image
+            except Exception:
+                continue
+
+            try:
+                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+                image = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                ocr_text = pytesseract.image_to_string(image)
+                if ocr_text and ocr_text.strip():
+                    text_parts.append(ocr_text)
+            except Exception:
+                continue
+
+        return "\n".join(text_parts)
+    finally:
+        doc.close()
+
+
 def extract_questions_from_pdf(pdf_source):
     """Extract likely question blocks from a PDF question-paper file."""
     questions = []
     _tmp_path = None
 
     try:
-        doc, _tmp_path = _open_pdf_from_source(pdf_source)
-        full_text = "\n".join(page.get_text("text") for page in doc)
+        full_text = _extract_pdf_text_for_questions(pdf_source)
+        if not full_text or not full_text.strip():
+            return []
+
         lines = [re.sub(r'\s+', ' ', ln).strip() for ln in full_text.splitlines() if re.sub(r'\s+', ' ', ln).strip()]
 
-        def _looks_like_question(line):
-            if not line:
-                return False
-            if len(line) < 10:
-                return False
-            if re.match(r'^(?:Q(?:uestion)?\s*)?[0-9]+[\.)]', line, re.I):
-                return True
-            if re.match(r'^[A-Za-z]\)', line):
-                return True
-            if re.search(r'\?$', line):
-                return True
-            if re.search(r'\b(?:what|why|how|describe|explain|write|state|differentiate|compare|define|list|discuss|sketch|draw|illustrate|derive|analyze|analyse)\b', line, re.I):
-                return True
-            return False
+        # Remove header/metadata lines and course outcome sections
+        filtered_lines = []
+        in_footer = False
+        for line in lines:
+            # Skip footer sections (Course Outcomes, RBT Levels)
+            if re.match(r'(?i)^\*?(?:course outcomes|revised bloom|rbt|cos|marks|at the end)', line):
+                in_footer = True
+            if re.match(r'(?i)^(?:prepared by|faculty name|hod|principal)', line):
+                in_footer = True
+            
+            # Skip table header row
+            if re.match(r'(?i)^q\.?\s*no\.?\s+questions?\s+marks?\s+cos?\*?', line):
+                continue
+            
+            # Skip obvious metadata lines
+            if re.match(r'(?i)^(?:department|internal assessment|academic year|program|date|year|semester|course code|course name|time|max\.?\s+marks|duration)', line):
+                continue
+            
+            # Skip instruction lines
+            if re.match(r'(?i)^(?:note|answer any|marks distribution)', line):
+                continue
+            
+            if not in_footer:
+                filtered_lines.append(line)
 
-        current = []
+        # Now parse questions: they start with numbered patterns like "1.", "1a.", "1a" followed by text
+        current_question = []
+        question_pattern = r'^(?:(\d+)([a-z])?\s*[.)]?\s+(.+))|^(?:(\d+)\s*[.)]?\s+(.+))'
 
-        def _flush_current():
-            nonlocal current
-            if not current:
-                return
-            block = " ".join(part for part in current if part).strip()
+        for line in filtered_lines:
+            # Check if line is a question start (numbered like 1a, 2b, 3., etc.)
+            question_match = re.match(question_pattern, line, re.I)
+            
+            if question_match:
+                # Flush previous question
+                if current_question:
+                    block = " ".join(current_question).strip()
+                    cleaned_block = clean_question_text(block)
+                    if len(cleaned_block) >= 12 and not re.fullmatch(r'[^A-Za-z0-9]+', cleaned_block):
+                        questions.append(cleaned_block)
+                
+                # Start new question
+                current_question = [line]
+            
+            # Skip the "OR" separator line
+            elif re.match(r'^or$', line, re.I):
+                continue
+            
+            # Skip lines that are just marks/CO/RBT info
+            elif re.match(r'^(?:\d+|CO\d+|L[1-6]|\d+\s+CO\d+\s+L[1-6])$', line, re.I):
+                continue
+            
+            # Continuation of current question (important for multi-line questions)
+            elif current_question and len(line) > 8:
+                current_question.append(line)
+            
+            # Short lines might be part of question
+            elif current_question and len(line) > 3:
+                current_question.append(line)
+
+        # Flush final question
+        if current_question:
+            block = " ".join(current_question).strip()
             cleaned_block = clean_question_text(block)
             if len(cleaned_block) >= 12 and not re.fullmatch(r'[^A-Za-z0-9]+', cleaned_block):
                 questions.append(cleaned_block)
-            current = []
 
-        for line in lines:
-            if _looks_like_question(line):
-                _flush_current()
-                current = [line]
-            else:
-                if current:
-                    current.append(line)
-                elif len(line) >= 20:
-                    current = [line]
-
-        _flush_current()
+        # If line-based extraction got few questions, try regex fallback on full text
+        if len(questions) < 3:
+            # Look for numbered questions: "1. ...", "1a. ...", "1a ..."
+            question_starts = list(re.finditer(
+                r'(?i)(?:^|\n)\s*(?:(\d+)([a-z])?\s*[.)]?|(?:q(?:uestion)?\.?\s*)?(\d+)([a-z])?\s*[.)]?)\s+([A-Z][^\n]{10,})',
+                full_text,
+                re.MULTILINE
+            ))
+            
+            if question_starts:
+                for i, match in enumerate(question_starts):
+                    # Get text from this match to the start of next match
+                    start_pos = match.end(0)
+                    if i + 1 < len(question_starts):
+                        end_pos = question_starts[i + 1].start(0)
+                    else:
+                        end_pos = len(full_text)
+                    
+                    chunk_text = match.group(0) + full_text[start_pos:end_pos]
+                    
+                    # Stop at course outcomes section
+                    if re.search(r'(?i)course outcomes|revised bloom', chunk_text):
+                        chunk_text = re.split(r'(?i)course outcomes|revised bloom', chunk_text)[0]
+                    
+                    cleaned = clean_question_text(chunk_text)
+                    if len(cleaned) >= 12 and cleaned not in questions:
+                        questions.append(cleaned)
 
     except Exception as e:
         print(f"Error extracting questions from PDF: {e}")
@@ -633,6 +771,94 @@ def build_question_analysis_summary(file_stats, question_entries, results, top_n
         'max_repeat_count': max((item['count'] for item in repeated_results), default=0),
         'questions_shared_by_all': sum(1 for item in repeated_results if file_count and item['paper_span'] == file_count),
         'results': repeated_results,
+        'generated_at': datetime.now().strftime('%d %b %Y, %I:%M %p'),
+    }
+
+
+def _extract_keyword_topics(question_text):
+    """Return a compact set of meaningful keywords for keyword-based similarity analysis."""
+    if not question_text:
+        return []
+    text = normalize_question_text(question_text)
+    if not text:
+        return []
+    words = re.findall(r'\b[a-z]{4,}\b', text)
+    stop_words = {
+        'what', 'when', 'where', 'which', 'while', 'their', 'there', 'from', 'with',
+        'into', 'this', 'that', 'than', 'them', 'then', 'them', 'have', 'been', 'were',
+        'will', 'your', 'upon', 'over', 'under', 'after', 'before', 'about', 'among',
+        'between', 'through', 'using', 'just', 'make', 'show', 'state', 'write', 'notes',
+        'answer', 'question', 'paper', 'model', 'system', 'study', 'based', 'using'
+    }
+    return [word for word in words if word not in stop_words]
+
+
+def build_internal_external_similarity_summary(internal_questions, external_questions):
+    """Compare internal and external papers by exact question overlap and topic overlap."""
+    internal_norm = []
+    external_norm = []
+    internal_by_norm = {}
+    external_by_norm = {}
+
+    for entry in internal_questions:
+        question_text = entry.get('question') if isinstance(entry, dict) else entry
+        normalized = normalize_question_text(question_text)
+        if normalized:
+            internal_norm.append(normalized)
+            internal_by_norm.setdefault(normalized, clean_question_text(question_text) or str(question_text or '').strip())
+    for entry in external_questions:
+        question_text = entry.get('question') if isinstance(entry, dict) else entry
+        normalized = normalize_question_text(question_text)
+        if normalized:
+            external_norm.append(normalized)
+            external_by_norm.setdefault(normalized, clean_question_text(question_text) or str(question_text or '').strip())
+
+    internal_unique = set(internal_norm)
+    external_unique = set(external_norm)
+    common_set = internal_unique & external_unique
+    union_set = internal_unique | external_unique
+    similarity_score = round((len(common_set) / len(union_set) * 100), 1) if union_set else 0.0
+
+    internal_keyword_counter = Counter()
+    external_keyword_counter = Counter()
+    for question in (entry.get('question') if isinstance(entry, dict) else entry for entry in internal_questions):
+        for word in _extract_keyword_topics(question):
+            internal_keyword_counter[word] += 1
+    for question in (entry.get('question') if isinstance(entry, dict) else entry for entry in external_questions):
+        for word in _extract_keyword_topics(question):
+            external_keyword_counter[word] += 1
+
+    similar_topics = []
+    for word in sorted(set(internal_keyword_counter) & set(external_keyword_counter)):
+        internal_count = internal_keyword_counter[word]
+        external_count = external_keyword_counter[word]
+        shared_strength = min(internal_count, external_count)
+        if shared_strength <= 0:
+            continue
+        similar_topics.append({
+            'topic': word,
+            'internal_count': internal_count,
+            'external_count': external_count,
+            'shared_strength': shared_strength,
+            'match_score': round((shared_strength / max(internal_count, external_count, 1)) * 100, 1),
+        })
+    similar_topics = sorted(similar_topics, key=lambda item: (-item['shared_strength'], -item['match_score'], item['topic']))[:10]
+
+    shared_question_labels = []
+    for normalized in sorted(common_set):
+        display_value = (internal_by_norm.get(normalized) or external_by_norm.get(normalized) or normalized).strip()
+        if display_value:
+            shared_question_labels.append(display_value)
+
+    return {
+        'internal_total_questions': len(internal_norm),
+        'external_total_questions': len(external_norm),
+        'common_questions': len(common_set),
+        'internal_unique_questions': len(internal_unique - external_unique),
+        'external_unique_questions': len(external_unique - internal_unique),
+        'similarity_score': similarity_score,
+        'similar_topics': similar_topics,
+        'shared_question_labels': shared_question_labels[:20],
         'generated_at': datetime.now().strftime('%d %b %Y, %I:%M %p'),
     }
 
@@ -1381,17 +1607,21 @@ def hod_question_paper_analysis():
                     pdf_text = ''
 
                 context = infer_paper_context(file_obj.filename, pdf_text)
+                cleaned_extracted = [
+                    clean_question_text(item) for item in extracted if clean_question_text(item)
+                ]
                 file_stats.append({
                     'file_name': file_obj.filename,
                     'paper_name': context['paper_name'],
                     'year': context['year'],
-                    'question_count': len(extracted),
+                    'question_count': len(cleaned_extracted),
+                    'questions': cleaned_extracted,
                 })
                 all_questions.extend([
                     {
                         'question': item,
                         'source': context,
-                    } for item in extracted
+                    } for item in cleaned_extracted
                 ])
             finally:
                 try:
@@ -1421,6 +1651,148 @@ def hod_question_paper_analysis():
         question_analysis=question_analysis,
         current_user=user,
         show_navbar=True,
+    )
+
+
+@app.route('/hod/question-paper-comparison', methods=['GET', 'POST'])
+@login_required
+@hod_required
+def hod_question_paper_comparison():
+    user = (session.get('user') or {})
+
+    if request.method == 'POST':
+        internal_files = request.files.getlist('internal_papers')
+        external_files = request.files.getlist('external_papers')
+
+        if not internal_files or not any(f and f.filename for f in internal_files):
+            flash('Please upload at least one internal paper PDF.', 'error')
+            return redirect(QUESTION_PAPER_COMPARISON_URL)
+        if not external_files or not any(f and f.filename for f in external_files):
+            flash('Please upload at least one external paper PDF.', 'error')
+            return redirect(QUESTION_PAPER_COMPARISON_URL)
+
+        def _extract_question_entries(files):
+            all_questions = []
+            file_stats = []
+            for file_obj in files:
+                if not file_obj or not file_obj.filename:
+                    continue
+                if not file_obj.filename.lower().endswith('.pdf'):
+                    flash(f"Unsupported file type: {file_obj.filename}", 'error')
+                    return None, None
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf', dir=tempfile.gettempdir())
+                try:
+                    file_obj.save(tmp.name)
+                    tmp.close()
+                    extracted = extract_questions_from_pdf(tmp.name)
+                    pdf_text = ''
+                    try:
+                        with fitz.open(tmp.name) as pdf_doc:
+                            pdf_text = "\n".join(page.get_text("text") for page in pdf_doc)
+                    except Exception:
+                        pdf_text = ''
+                    context = infer_paper_context(file_obj.filename, pdf_text)
+                    cleaned_extracted = [
+                        clean_question_text(item) for item in extracted if clean_question_text(item)
+                    ]
+                    file_stats.append({
+                        'file_name': file_obj.filename,
+                        'paper_name': context['paper_name'],
+                        'year': context['year'],
+                        'question_count': len(cleaned_extracted),
+                        'questions': cleaned_extracted,
+                    })
+                    all_questions.extend([
+                        {'question': item, 'source': context}
+                        for item in cleaned_extracted
+                    ])
+                finally:
+                    try:
+                        os.unlink(tmp.name)
+                    except OSError:
+                        pass
+            return all_questions, file_stats
+
+        internal_questions, internal_files_summary = _extract_question_entries(internal_files)
+        if internal_questions is None:
+            return redirect(QUESTION_PAPER_COMPARISON_URL)
+        external_questions, external_files_summary = _extract_question_entries(external_files)
+        if external_questions is None:
+            return redirect(QUESTION_PAPER_COMPARISON_URL)
+
+        if not internal_questions or not external_questions:
+            internal_count = len(internal_questions) if internal_questions else 0
+            external_count = len(external_questions) if external_questions else 0
+            msg = f'No readable questions extracted: {internal_count} internal, {external_count} external. Please check PDF content.'
+            flash(msg, 'warning')
+            # Still show the file summaries even if no questions extracted
+            if internal_files_summary or external_files_summary:
+                summary = {
+                    'similarity_score': 0,
+                    'common_questions': 0,
+                    'internal_total_questions': internal_count,
+                    'external_total_questions': external_count,
+                    'internal_unique_questions': internal_count,
+                    'external_unique_questions': external_count,
+                    'similar_topics': [],
+                    'shared_question_labels': [],
+                    'internal_files': internal_files_summary or [],
+                    'external_files': external_files_summary or [],
+                    'generated_at': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                }
+                session['hod_question_paper_comparison'] = summary
+            return redirect(QUESTION_PAPER_COMPARISON_URL)
+
+        summary = build_internal_external_similarity_summary(internal_questions, external_questions)
+        summary['internal_files'] = internal_files_summary
+        summary['external_files'] = external_files_summary
+        session['hod_question_paper_comparison'] = summary
+        flash('Internal and external paper comparison completed.', 'success')
+        return redirect(QUESTION_PAPER_COMPARISON_URL)
+
+    comparison = session.get('hod_question_paper_comparison')
+    return render_template(
+        'hod_question_paper_comparison.html',
+        user=user,
+        comparison=comparison,
+        current_user=user,
+        show_navbar=True,
+    )
+
+
+@app.route('/hod/question-paper-comparison/clear', methods=['POST'])
+@login_required
+@hod_required
+def clear_question_paper_comparison():
+    session.pop('hod_question_paper_comparison', None)
+    flash('Previous comparison results cleared.', 'success')
+    return redirect(QUESTION_PAPER_COMPARISON_URL)
+
+
+@app.route('/hod/question-paper-comparison/export', methods=['GET'])
+@login_required
+@hod_required
+def export_question_paper_comparison():
+    comparison = session.get('hod_question_paper_comparison')
+    if not comparison:
+        flash('No comparison results to export.', 'warning')
+        return redirect(QUESTION_PAPER_COMPARISON_URL)
+
+    import io, csv
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Question', 'Type'])
+
+    for question in comparison.get('shared_question_labels', []):
+        writer.writerow([question.replace('\n', ' ').strip(), 'Shared'])
+
+    csv_data = output.getvalue()
+    output.close()
+    return send_file(
+        io.BytesIO(csv_data.encode('utf-8')),
+        mimetype='text/csv',
+        as_attachment=True,
+        download_name=f"internal_external_comparison_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
     )
 
 

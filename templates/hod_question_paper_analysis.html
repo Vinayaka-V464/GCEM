@@ -293,16 +293,29 @@
           <h3 class="h4 mb-2" style="color: var(--green-primary);">Per-file extraction summary</h3>
           <div class="analysis-file-list">
             {% for file in question_analysis.files %}
-            <div class="analysis-file-item">
-              <div>
-                <strong style="display:block; color: var(--brown);">{{ file.paper_name }}</strong>
-                <span class="text-muted" style="font-size: 0.9rem;">{{ file.file_name }}</span>
+            <details class="analysis-file-item" style="display:block; cursor:pointer;">
+              <summary style="list-style:none; display:flex; justify-content:space-between; gap:12px; align-items:center;">
+                <div>
+                  <strong style="display:block; color: var(--brown);">{{ file.paper_name }}</strong>
+                  <span class="text-muted" style="font-size: 0.9rem;">{{ file.file_name }}</span>
+                </div>
+                <div style="text-align:right;">
+                  <div class="badge" style="background: var(--green-bg); color: var(--green-primary);">{{ file.question_count }} questions</div>
+                  <div class="text-muted" style="font-size: 0.88rem; margin-top: 6px;">{{ file.year }}</div>
+                </div>
+              </summary>
+              <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--glass-border);">
+                {% if file.questions %}
+                <ol style="margin: 0; padding-left: 18px; line-height: 1.7; color: var(--brown);">
+                  {% for question in file.questions %}
+                  <li>{{ question }}</li>
+                  {% endfor %}
+                </ol>
+                {% else %}
+                <div class="text-muted">No extracted questions were found for this paper.</div>
+                {% endif %}
               </div>
-              <div style="text-align:right;">
-                <div class="badge" style="background: var(--green-bg); color: var(--green-primary);">{{ file.question_count }} questions</div>
-                <div class="text-muted" style="font-size: 0.88rem; margin-top: 6px;">{{ file.year }}</div>
-              </div>
-            </div>
+            </details>
             {% endfor %}
           </div>
         </div>

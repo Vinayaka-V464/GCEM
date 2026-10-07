@@ -3,3 +3,5 @@ PyMuPDF
 gunicorn
 python-dotenv
 psycopg2-binary
+pytesseract
+Pillow

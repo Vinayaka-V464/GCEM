@@ -160,6 +160,7 @@
                 </div>
                 <div style="display:flex; gap:12px; flex-wrap:wrap;">
                     <a href="{{ url_for('hod_question_paper_analysis') }}" class="btn btn-secondary">Open Analysis Page</a>
+                    <a href="{{ url_for('hod_question_paper_comparison') }}" class="btn btn-outline">Open Comparison Page</a>
                 </div>
             </div>
             <div style="margin-top: 16px; display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
@@ -630,15 +631,18 @@
         syncTimetableSections();
         syncPreviewSections();
         filterTeacherRows();
+
         const modal = document.getElementById('teacher-details-modal');
-        modal?.addEventListener('click', (e) => {
-            if (e.target === modal) closeTeacherDetails();
-        });
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) closeTeacherDetails();
+            });
+        }
 
         document.querySelectorAll('.stat-card-click[data-target]').forEach(card => {
             card.addEventListener('click', () => {
                 const id = card.getAttribute('data-target');
-                showSectionById(id);
+                if (id) showSectionById(id);
             });
         });
 
@@ -651,65 +655,71 @@
         });
     });
 
-    document.getElementById('signature-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
+    const signatureForm = document.getElementById('signature-form');
+    if (signatureForm) {
+        signatureForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
 
-        const fileInput = document.getElementById('signature-file');
-        if (!fileInput.files.length) {
-            alert('Please select a file');
-            return;
-        }
-
-        const formData = new FormData();
-        formData.append('signature', fileInput.files[0]);
-
-        try {
-            const response = await fetch('/api/upload/signature', {
-                method: 'POST',
-                body: formData
-            });
-
-            const result = await response.json();
-            if (result.success) {
-                alert('Signature uploaded successfully!');
-                location.reload();
-            } else {
-                alert(result.message || 'Upload failed');
+            const fileInput = document.getElementById('signature-file');
+            if (!fileInput || !fileInput.files.length) {
+                alert('Please select a file');
+                return;
             }
-        } catch (error) {
-            alert('Error uploading signature');
-        }
-    });
 
-    document.getElementById('principal-signature-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
+            const formData = new FormData();
+            formData.append('signature', fileInput.files[0]);
 
-        const fileInput = document.getElementById('principal-signature-file');
-        if (!fileInput.files.length) {
-            alert('Please select a file');
-            return;
-        }
+            try {
+                const response = await fetch('/api/upload/signature', {
+                    method: 'POST',
+                    body: formData
+                });
 
-        const formData = new FormData();
-        formData.append('signature', fileInput.files[0]);
-
-        try {
-            const response = await fetch('/api/upload/principal-signature', {
-                method: 'POST',
-                body: formData
-            });
-
-            const result = await response.json();
-            if (result.success) {
-                alert('Principal signature uploaded successfully!');
-                location.reload();
-            } else {
-                alert(result.message || 'Upload failed');
+                const result = await response.json();
+                if (result.success) {
+                    alert('Signature uploaded successfully!');
+                    location.reload();
+                } else {
+                    alert(result.message || 'Upload failed');
+                }
+            } catch (error) {
+                alert('Error uploading signature');
             }
-        } catch (error) {
-            alert('Error uploading principal signature');
-        }
-    });
+        });
+    }
+
+    const principalSignatureForm = document.getElementById('principal-signature-form');
+    if (principalSignatureForm) {
+        principalSignatureForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const fileInput = document.getElementById('principal-signature-file');
+            if (!fileInput || !fileInput.files.length) {
+                alert('Please select a file');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('signature', fileInput.files[0]);
+
+            try {
+                const response = await fetch('/api/upload/principal-signature', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert('Principal signature uploaded successfully!');
+                    location.reload();
+                } else {
+                    alert(result.message || 'Upload failed');
+                }
+            } catch (error) {
+                alert('Error uploading principal signature');
+            }
+        });
+    }
 
     async function approveTeacher(id) {
         const resp = await fetch(`/api/hod/approve-teacher/${id}`, { method: 'POST' });

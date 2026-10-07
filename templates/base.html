@@ -42,6 +42,11 @@
           style="height: 40px; margin-right: 12px; border-radius: 4px;">
         Paper Generator
       </a>
+      <button class="navbar-toggle" aria-label="Toggle navigation" aria-expanded="false">
+        <span class="bar"></span>
+        <span class="bar"></span>
+        <span class="bar"></span>
+      </button>
       <ul class="navbar-nav">
         {% if current_user %}
         <li><a href="/dashboard" class="nav-link">Dashboard</a></li>
@@ -163,6 +168,16 @@
             applyTheme(next);
           });
         });
+
+        // Mobile navbar toggle
+        var navToggle = document.querySelector('.navbar-toggle');
+        var navbarNav = document.querySelector('.navbar-nav');
+        if (navToggle && navbarNav) {
+          navToggle.addEventListener('click', function () {
+            var isOpen = navbarNav.classList.toggle('open');
+            navToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+          });
+        }
 
         document.querySelectorAll('form').forEach(function (form) {
           form.addEventListener('submit', function () {

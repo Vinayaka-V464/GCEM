@@ -4,12 +4,26 @@
 
 import base64
 import os
+import tempfile
 import uuid
 from pathlib import Path
 
 
+def get_upload_root():
+    """Return the writable local storage root for the current environment."""
+    configured_root = os.environ.get('UPLOAD_ROOT')
+    if configured_root:
+        root = Path(configured_root)
+        if os.environ.get('VERCEL') and not root.is_absolute():
+            root = Path(tempfile.gettempdir()) / root
+        return root.resolve()
+    if os.environ.get('VERCEL'):
+        return Path(tempfile.gettempdir()) / 'paper-generator-uploads'
+    return Path('uploads').resolve()
+
+
 def _upload_root():
-    return Path(os.environ.get('UPLOAD_ROOT', 'uploads')).resolve()
+    return get_upload_root()
 
 
 def _ensure_folder(subfolder):

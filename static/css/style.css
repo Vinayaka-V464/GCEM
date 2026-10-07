@@ -124,6 +124,13 @@
   padding: 0;
 }
 
+/* Make media scale responsively */
+img, picture, video, iframe {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
 html {
   scroll-behavior: smooth;
 }
@@ -171,6 +178,10 @@ h2,
 h3,
 h4,
 h5,
+  /* Reduce heavy paddings on mobile for denser layout */
+  .card {
+    padding: var(--space-lg);
+  }
 h6 {
   font-family: var(--font-heading);
   font-weight: 700;
@@ -319,6 +330,27 @@ h6 {
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
   overflow: hidden;
+}
+
+/* Navbar toggle (hamburger) */
+.navbar-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.navbar-toggle .bar {
+  display: block;
+  width: 22px;
+  height: 2px;
+  background: var(--nav-text);
+  margin: 4px 0;
+  border-radius: 2px;
+  transition: transform 0.2s ease, opacity 0.2s ease;
 }
 
 /* STARLIGHT CARDS - Exact Match */
@@ -877,6 +909,71 @@ select.form-input:disabled {
   color: var(--chip-text-strong);
 }
 
+/* File List - External Papers Grid */
+.file-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--space-lg);
+  margin-top: var(--space-lg);
+}
+
+.file-item {
+  display: block;
+  background: var(--glass-card-bg);
+  border: 1px solid var(--glass-card-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  transition: all 0.3s ease;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.file-item:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  background: var(--card-bg);
+}
+
+.file-item summary {
+  display: flex !important;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-md);
+  min-width: 0;
+  list-style: none;
+}
+
+.file-item summary > div {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.file-item summary > div strong {
+  display: block;
+  font-size: 1rem;
+  color: var(--brown);
+  margin-bottom: var(--space-sm);
+  word-break: break-word;
+  overflow-wrap: break-word;
+  line-height: 1.3;
+}
+
+.file-item summary > div .text-muted {
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.file-item summary .badge {
+  flex-shrink: 0;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+
+.file-item details[open] summary {
+  margin-bottom: var(--space-md);
+}
+
 /* Empty State */
 .empty-state {
   text-align: center;
@@ -1042,5 +1139,56 @@ select.form-input:disabled {
 
   .dashboard {
     padding-top: 80px;
+  }
+  /* Mobile navbar behavior */
+  .navbar-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+  }
+
+  .navbar-toggle {
+    display: inline-flex;
+    z-index: 120;
+  }
+
+  .navbar-nav {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    left: 0;
+    flex-direction: column;
+    gap: var(--space-sm);
+    background: var(--navbar-bg);
+    border-bottom: 1px solid var(--navbar-border);
+    padding: var(--space-md);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+  }
+
+  .navbar-nav.open {
+    display: flex;
+  }
+
+  .navbar-nav li {
+    margin: 0;
+  }
+
+  .container {
+    padding: 0 var(--space-md);
+  }
+
+  .file-list {
+    grid-template-columns: 1fr;
+  }
+
+  .file-item summary {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .file-item summary .badge {
+    align-self: flex-start;
   }
 }

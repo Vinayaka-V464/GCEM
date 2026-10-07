@@ -68,6 +68,8 @@ The app will create the database and upload folders on startup.
 - Python 3.9+ recommended
 - Flask + SQLite
 - PyMuPDF for PDF parsing
+- Set `UPLOAD_ROOT` to configure local file storage. On Vercel, uploads default to `/tmp/paper-generator-uploads` because the deployed filesystem is read-only outside `/tmp`.
+- Vercel `/tmp` storage is temporary and instance-local. Configure an external object-storage provider before relying on uploaded files in production.
 
 ## Bench Allotment Usage
 1. Open **HOD Dashboard ? Bench Allotment**.
